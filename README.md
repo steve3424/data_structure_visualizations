@@ -2,63 +2,50 @@
 Some visualizations of data structures and algorithms.
 
 ## Repo Structure
-- /shell.bat sets up the visual studio compiler for use. I am not sure if the path is valid on every Windows 10 machine.
-- All of the headers are in /include which includes headers for the data structures.
-- All of the static libs are in /lib. It also links to opengl32.lib which is not included in this folder.
-- /misc has some images but nothing in there is currently used.
-- /textures also has images which aren't used.
-- /zshaders has a bunch of shaders. The only ones that are used are generic.vert and generic.frag.
+- /shell.bat - sets up the visual studio compiler for use. I am not sure if the path is valid on every Windows 10 machine.
+- /include   - Some 3rd party headers.
+- /lib       - Libraries needed to link to. **Also links to opengl32.lib**
+- /logs      - stderr is redirected to a text file which I use to output any opengl errors.
+- /src       - all source code and a view .bat files for convenience.
+- /textures  - right now only used for the single background image.
+- /zshaders  - shaders for the basic objects used and for a background image. (It is named zshaders so I can easily navigate to src by pressing 's' and tabbing on the command line)
 
-### /src
-- build.bat creates dir /build if it doesn't exist and builds the project into there
-- run.bat runs win32_main.exe in the build directory
-- open.bat is used for vim. It is a simple command to open vim with the session file work.vim. It opens a predefined set of tabs. To modify the session, open the session, add, delete, or move tabs, run the command ':mks! work.vim'
+## Project structure
+The basic structure for the project was learned from Casey Muratori's [Handmade Hero](https://handmadehero.org) project.
 
-### win32_main.cpp
-This is the only translation unit. The other .cpp files are included in here and compiled. The code here is meant to be windows specific code (setting up the window, opengl, reading/writing files, getting input, etc) AND it sets up the data structures.
+There are 3 primary files that drive the project:
+1. /src/win32_main.cpp - This is the platform layer. This handles initializing opengl, file io, etc. and provides it's interface in /src/win32_main.h. Any other platform layer could also be set up. In that case it would probably make sense to provide a uniform interface for platform related stuff that the other parts of the code might need.
 
-### opengl.cpp
-This contains the calls to opengl to set up vertex arrays, shaders, etc.
+2. /src/engine.cpp - This is the main engine. The main function is GameUpdateAndRender(). It handles a few things such as navigating the different visualizations that are set up, moving the camera, and generating some basic objects. It provides an interface in /src/engine.h which contains some basic structures that might be used by the different visualizations e.g. cube, digit, background.
 
-### engine.cpp
-This contains the main driver of the program. It updates the state of the data structures and it contains the code to draw them.
+3. *visualization files* - Each visualization that is added would be in a separate .cpp file. This file would take care of getting buffers on the gpu, setting up whatever geometry/data it needs, updating the visualization, making draw calls, etc.
 
-The main structure of the code is taken from Casey Muratori's Handmade Hero project (https://handmadehero.org). 
+**To add a visualization**
 
-The main idea is that there are 2 layers: platform layer and game layer:
-- Platform layer contains code for each platform that is targeted (right now only Windows). This takes care of things like file i/o, processing input, creating a window, etc. Right now it also sets up the data structures, but maybe that should be moved. There would be a separate set of .cpp files for each platform. 
+Create the visualization in a .cpp file with an interface that can be called from /src/engine.cpp. Add an enum value for it in /src/engine.h. Create a switch case in GameUpdateAndRender() in /src/engine.cpp so it can be navigated to. Include the .cpp file in /src/win32_main.cpp above engine.cpp
 
-- Game layer contains all of the code to update state and draw. The platform layer fills out the structs in engine.h and passes them off to the game layer to do the rest of the work. The only service that is currently used by both is opengl. The platform layer uses it to set up the vertex arrays and shaders, while engine.cpp sends updated data to the GPU and issues draw calls.
-
+## Build structure
+The build structure was also a technique used in the [Handmade Hero](https://handmadehero.org) project. The only file that gets built is the platform file. This file includes all of the headers and .cpp files. The structure can be seen at the top of /src/win32_main.cpp:
+```
+#include "engine.h"
+#include "opengl.cpp"
+#include "insertion_sort.cpp"
+#include "engine.cpp"
+```
+engine.cpp is at the bottom so it can see and use everything in the visualization files which would be included above. Any visualization file that needs the engine structs/utilities or platform structs/utilites would include /src/engine.h or /src/win32_main.h. 
 
 # TO USE
-Right now I only have visualizations for a queue, binary tree, and insertion sort. They are all loaded into the GameState.data_structures[] struct found in engine.h before the main loop. The camera is still global so if you move it around in one view it will move for the others.
+The input keys are only setup for dvorak right now
 
 ##### Navigation
 - 'w'/'v' keys move through views
 
 ##### Camera
-- ',' zooms in
-- 's' zooms out
+- ',' zoom in
+- 'o' zoom out
 - left/right/up/down moves camera along x/y axis
 
-##### Binary Tree
-<img src="gifs/binary_tree.gif" width="750" height="250" />
-
-
-- 'a' adds random element within (0-99 as those are the only digits supported) will not add anything if element already exists
-- 'e' deletes selected element
-- 'p' goes to previous node
-- 's' goes to next node
-
-##### Queue
-<img src="gifs/queue.gif" width="750" height="250" />
-- 'a' adds element
-- 'e' deletes element
-
 ##### Insertion Sort
-<img src="gifs/insertion_sort.gif" width="750" height="250" />
-- 's' starts sort
-
-
-
+- '0-9' adjust speed setting
+- 'p' pause/unpause animation
+- 's' start animation OR return to original state if animation finished
