@@ -5,10 +5,11 @@ Some visualizations of data structures and algorithms.
 - /shell.bat - sets up the visual studio compiler for use. I am not sure if the path is valid on every Windows 10 machine.
 - /include   - Some 3rd party headers.
 - /lib       - Libraries needed to link to. **Also links to opengl32.lib**
-- /logs      - stderr is redirected to a text file which I use to output any opengl errors.
 - /src       - all source code and a view .bat files for convenience.
 - /textures  - right now only used for the single background image.
 - /zshaders  - shaders for the basic objects used and for a background image. (It is named zshaders so I can easily navigate to src by pressing 's' and tabbing on the command line)
+- /logs      - **created at runtime.** stderr is redirected to a text file which I use to output any opengl errors.
+- /build     - **created upon running build.bat.** all build output goes here
 
 ## Project structure
 The basic structure for the project was learned from Casey Muratori's [Handmade Hero](https://handmadehero.org) project.
