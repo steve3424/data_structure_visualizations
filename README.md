@@ -47,6 +47,8 @@ The input keys are only setup for dvorak right now
 - left/right/up/down moves camera along x/y axis
 
 ##### Insertion Sort
+VIDEO: https://youtu.be/3Zxa4F3npBc 
+
 - '0-9' adjust speed setting
 - 'p' pause/unpause animation
 - 's' start animation OR return to original state if animation finished
