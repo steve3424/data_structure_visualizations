@@ -31,16 +31,19 @@ typedef struct {
 } ISortNode;
 
 typedef struct {
+	// state machine stuff
 	ISortState current_state;
 	ISortState previous_state;
+
+	// data
 	int selected_val_index;
 	int compare_val_index;
 	ISortNode nodes[INSERTION_SORT_SIZE];
 
+	// opengl stuff
 	GameCamera camera;
 	unsigned int vbo;
 	unsigned int shader;
-	
 	GameBackground background;
 } ISort;
 
@@ -98,7 +101,6 @@ ISort* ISort_Init() {
 
 	GLCall(glGenBuffers(1, &isort->vbo));
 	GLCall(glBindBuffer(GL_ARRAY_BUFFER, isort->vbo));
-
 	GLCall(glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(offsetof(Vertex, pos))));
 	GLCall(glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(offsetof(Vertex, rgb))));
 	GLCall(glEnableVertexAttribArray(0));
@@ -461,7 +463,6 @@ INTERNAL void ISort_Update(ISort* isort, GameInput* input) {
 }
 
 INTERNAL void ISort_DrawBackground(GameBackground gb, float window_width, float window_height) {
-
 	GLCall(glBindVertexArray(gb.vao));
 	GLCall(glBindBuffer(GL_ARRAY_BUFFER, gb.vbo));
 	GLCall(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gb.ibo));
@@ -472,16 +473,12 @@ INTERNAL void ISort_DrawBackground(GameBackground gb, float window_width, float 
 	glm::mat4 projection = glm::perspective(glm::radians(75.0f), window_width / window_height, 0.1f, 100.0f);
 	glUniformMatrix4fv(projection_location, 1, GL_FALSE, glm::value_ptr(projection));
 
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
 	glDisable(GL_DEPTH_TEST);
 	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (void*)0);
 
-	GLCall(glBindBuffer(GL_ARRAY_BUFFER, 0));
 	GLCall(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0));
+	GLCall(glBindBuffer(GL_ARRAY_BUFFER, 0));
 	GLCall(glBindVertexArray(0));
-
-	glEnable(GL_DEPTH_TEST);
 }
 
 INTERNAL void ISort_Draw(ISort* isort, float window_width, float window_height) {
@@ -489,14 +486,15 @@ INTERNAL void ISort_Draw(ISort* isort, float window_width, float window_height) 
 	assert(0.0f < window_width);
 	assert(0.0f < window_height);
 
-	ISort_DrawBackground(isort->background, window_width, window_height);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	//ISort_DrawBackground(isort->background, window_width, window_height);
 
 	GLCall(glBindBuffer(GL_ARRAY_BUFFER, isort->vbo));
 	GLCall(glUseProgram(isort->shader));
 
 	unsigned int buffer_size = INSERTION_SORT_SIZE * sizeof(GameCube);
 	GLCall(glBufferData(GL_ARRAY_BUFFER, buffer_size, NULL, GL_DYNAMIC_DRAW));
-
 	for(int i = 0; i < INSERTION_SORT_SIZE; ++i) {
 		GLCall(glBufferSubData(GL_ARRAY_BUFFER, i * sizeof(GameCube), sizeof(GameCube), 
 					           &isort->nodes[i].cube));
@@ -504,7 +502,6 @@ INTERNAL void ISort_Draw(ISort* isort, float window_width, float window_height) 
 	
 	GLCall(glLineWidth(4.0f));
 	GLCall(glEnable(GL_DEPTH_TEST));
-	//GLCall(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
 
 	int model_location = glGetUniformLocation(isort->shader, "model");
 	int view_location = glGetUniformLocation(isort->shader, "view");

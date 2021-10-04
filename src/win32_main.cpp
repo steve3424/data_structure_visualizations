@@ -22,6 +22,7 @@
 #include "engine.h"
 #include "opengl.cpp"
 #include "insertion_sort.cpp"
+#include "avl_tree.cpp"
 #include "engine.cpp"
 
 GLOBAL bool global_running;

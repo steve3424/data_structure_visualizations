@@ -79,6 +79,17 @@ INTERNAL void GameUpdateAndRender(GameMemory* memory, GameInput* input) {
 			ISort_Draw(isort, (float)game_state->window_width, (float)game_state->window_height);
 		} break;
 
+		case AVL_TREE:
+		{
+			AVLTree* avl_tree = (AVLTree*)game_state->data_structures[AVL_TREE];
+			if(!avl_tree) {
+				game_state->data_structures[AVL_TREE] = AVLTree_Init();
+				avl_tree = (AVLTree*)game_state->data_structures[AVL_TREE];
+			}
+			UpdateCamera(&avl_tree->camera, input);
+			AVLTree_Draw(avl_tree, (float)game_state->window_width, (float)game_state->window_height);
+		} break;
+
 		default:
 		{
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

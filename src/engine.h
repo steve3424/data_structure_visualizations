@@ -23,9 +23,11 @@
 #define MAX_DIGITS 100
 #define VERTICES_PER_CUBE (sizeof(GameCube) / sizeof(Vertex))
 
+// TODO: Maybe parameterize node width here in a #define
+
 typedef enum {
-	INSERTION_SORT,
 	AVL_TREE,
+	INSERTION_SORT,
 	NUM_VIEWS // THIS NEEDS TO BE THE LAST ENUM IN THE LIST
 } View;
 
@@ -125,9 +127,3 @@ INTERNAL GameCube       GenCube(const float x, const float y, const float z, con
 INTERNAL GameBackground GenBackgroundBuffer();
 #define ENGINE_H
 #endif
-
-//struct GameObject {
-//	unsigned int vao;
-//	int num_indices;
-//};
-
