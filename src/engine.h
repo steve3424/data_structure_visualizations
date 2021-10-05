@@ -26,8 +26,8 @@
 // TODO: Maybe parameterize node width here in a #define
 
 typedef enum {
-	AVL_TREE,
 	INSERTION_SORT,
+	AVL_TREE,
 	NUM_VIEWS // THIS NEEDS TO BE THE LAST ENUM IN THE LIST
 } View;
 

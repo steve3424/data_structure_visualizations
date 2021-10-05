@@ -42,6 +42,7 @@ typedef struct {
 
 	// opengl stuff
 	GameCamera camera;
+	unsigned int vao;
 	unsigned int vbo;
 	unsigned int shader;
 	GameBackground background;
@@ -99,6 +100,8 @@ ISort* ISort_Init() {
 
 	isort->shader = LoadShaderProgram("..\\zshaders\\game_cube.vert", "..\\zshaders\\game_cube.frag");
 
+	GLCall(glGenVertexArrays(1, &isort->vao));
+	GLCall(glBindVertexArray(isort->vao));
 	GLCall(glGenBuffers(1, &isort->vbo));
 	GLCall(glBindBuffer(GL_ARRAY_BUFFER, isort->vbo));
 	GLCall(glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(offsetof(Vertex, pos))));
@@ -107,6 +110,7 @@ ISort* ISort_Init() {
 	GLCall(glEnableVertexAttribArray(1));
 
 	GLCall(glBindBuffer(GL_ARRAY_BUFFER, 0));
+	GLCall(glBindVertexArray(0));
 
 	isort->background = GenBackgroundBuffer();
 	isort->background.shader = LoadShaderProgram("..\\zshaders\\background.vert", "..\\zshaders\\background.frag");
@@ -486,10 +490,13 @@ INTERNAL void ISort_Draw(ISort* isort, float window_width, float window_height) 
 	assert(0.0f < window_width);
 	assert(0.0f < window_height);
 
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	GLCall(glLineWidth(4.0f));
+	GLCall(glEnable(GL_DEPTH_TEST));
+	GLCall(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
 
-	//ISort_DrawBackground(isort->background, window_width, window_height);
+	ISort_DrawBackground(isort->background, window_width, window_height);
 
+	GLCall(glBindVertexArray(isort->vao));
 	GLCall(glBindBuffer(GL_ARRAY_BUFFER, isort->vbo));
 	GLCall(glUseProgram(isort->shader));
 
@@ -500,9 +507,6 @@ INTERNAL void ISort_Draw(ISort* isort, float window_width, float window_height) 
 					           &isort->nodes[i].cube));
 	}
 	
-	GLCall(glLineWidth(4.0f));
-	GLCall(glEnable(GL_DEPTH_TEST));
-
 	int model_location = glGetUniformLocation(isort->shader, "model");
 	int view_location = glGetUniformLocation(isort->shader, "view");
 	int projection_location = glGetUniformLocation(isort->shader, "projection");
@@ -524,4 +528,5 @@ INTERNAL void ISort_Draw(ISort* isort, float window_width, float window_height) 
 	GLCall(glDrawArrays(GL_LINES, 0, INSERTION_SORT_SIZE * VERTICES_PER_CUBE));
 
 	GLCall(glBindBuffer(GL_ARRAY_BUFFER, 0));
+	GLCall(glBindVertexArray(0));
 }

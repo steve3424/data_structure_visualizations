@@ -425,12 +425,6 @@ INTERNAL void GenDigit(const float x, const float y, const float z, const int va
 }
 
 INTERNAL GameCube GenCube(const float x, const float y, const float z, const int val, float r, float g, float b) {
-	// vertices zigzag in following order:
-	// front face:
-	// 		tl, tr, bl, br
-	// back face:
-	// 		tl, tr, bl, br
-	
 	GameCube cube = {0};
 	cube.cube_vertices[0].pos[0] = x - 0.5f;
 	cube.cube_vertices[0].pos[1] = y + 0.5f;

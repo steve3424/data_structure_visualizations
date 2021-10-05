@@ -1,7 +1,6 @@
 #include "engine.h"
 #include "windows.h"
 
-#define AVL_TREE_SIZE 15
 #define THRESHOLD 0.001f
 
 typedef enum {
@@ -25,7 +24,6 @@ typedef struct AVLNode {
 	float y_vel;
 } AVLNode;
 
-// TODO: Do I need to track size?
 typedef struct {
 	// data
 	int size;
@@ -33,6 +31,7 @@ typedef struct {
 
 	// opengl
 	GameCamera camera;
+	unsigned int vao;
 	unsigned int vbo;
 	unsigned int shader;
 	GameBackground background;
@@ -212,12 +211,12 @@ void AVLTree_Insert(AVLTree *const tree, const int val) {
 static AVLTree* AVLTree_Init() {
 	AVLTree* avl_tree = (AVLTree*)calloc(1, sizeof(AVLTree));
 	if(!avl_tree) {
-		fprintf(stderr, "Couldn't malloc for ISort\n");
+		fprintf(stderr, "Couldn't malloc for AVLTree\n");
 		return NULL;
 	}
 
 	// Initialize entire tree to get final positions in tree
-	for(int i = 0; i < AVL_TREE_SIZE; ++i) {
+	for(int i = 0; i < 16; ++i) {
 		int val = rand() % MAX_DIGITS;
 		AVLTree_Insert(avl_tree, val);
 	}
@@ -259,6 +258,32 @@ static AVLTree* AVLTree_Init() {
 			uint64_t split_index = (current_index * 2) + 1; // map node indices to odd #'s
 			float x_pos = x_start + ((float)split_index * x_width);
 			current_node->cube = GenCube(x_pos, y_pos, 0.0f, current_node->val, 0.0f, 0.0f, 1.0f);
+			
+			// draw line to parent
+			// lines will go from center top of child
+			// to center bottom of parent
+			// TODO: Change this if I ever #define node width
+			if(current_node->parent) {
+				AVLNode* parent = current_node->parent;
+				if(current_node == parent->left) {
+					current_node->cube.line_vertices[0] = current_node->cube.cube_vertices[1];
+					current_node->cube.line_vertices[1] = parent->cube.cube_vertices[5];
+					current_node->cube.line_vertices[0].x -= 0.5f;
+					current_node->cube.line_vertices[0].z -= 0.5f;
+					current_node->cube.line_vertices[1].x += 0.5f;
+					current_node->cube.line_vertices[1].z -= 0.5f;
+				}
+				else {
+					// line will go from top left of this cube
+					// to bottom right of parent
+					current_node->cube.line_vertices[0] = current_node->cube.cube_vertices[0];
+					current_node->cube.line_vertices[1] = parent->cube.cube_vertices[3];
+					current_node->cube.line_vertices[0].x += 0.5f;
+					current_node->cube.line_vertices[0].z -= 0.5f;
+					current_node->cube.line_vertices[1].x -= 0.5f;
+					current_node->cube.line_vertices[1].z -= 0.5f;
+				}
+			}
 
 			if(current_node->left) {
 				nodes[push] = current_node->left;
@@ -287,6 +312,8 @@ static AVLTree* AVLTree_Init() {
 	// Initialize opengl stuff
 	avl_tree->shader = LoadShaderProgram("..\\zshaders\\game_cube.vert", "..\\zshaders\\game_cube.frag");
 
+	GLCall(glGenVertexArrays(1, &avl_tree->vao));
+	GLCall(glBindVertexArray(avl_tree->vao));
 	GLCall(glGenBuffers(1, &avl_tree->vbo));
 	GLCall(glBindBuffer(GL_ARRAY_BUFFER, avl_tree->vbo));
 	GLCall(glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(offsetof(Vertex, pos))));
@@ -295,8 +322,32 @@ static AVLTree* AVLTree_Init() {
 	GLCall(glEnableVertexAttribArray(1));
 
 	GLCall(glBindBuffer(GL_ARRAY_BUFFER, 0));
+	GLCall(glBindVertexArray(0));
+
+	avl_tree->background = GenBackgroundBuffer();
+	avl_tree->background.shader = LoadShaderProgram("..\\zshaders\\background.vert", "..\\zshaders\\background.frag");
+	avl_tree->background.texture = LoadTexture("..\\textures\\space.jpg");
 
 	return avl_tree;
+}
+
+INTERNAL void AVLTree_DrawBackground(GameBackground gb, float window_width, float window_height) {
+	GLCall(glBindVertexArray(gb.vao));
+	GLCall(glBindBuffer(GL_ARRAY_BUFFER, gb.vbo));
+	GLCall(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gb.ibo));
+	glBindTexture(GL_TEXTURE_2D, gb.texture);
+	glUseProgram(gb.shader);
+
+	int projection_location = glGetUniformLocation(gb.shader, "projection");
+	glm::mat4 projection = glm::perspective(glm::radians(75.0f), window_width / window_height, 0.1f, 100.0f);
+	glUniformMatrix4fv(projection_location, 1, GL_FALSE, glm::value_ptr(projection));
+
+	glDisable(GL_DEPTH_TEST);
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (void*)0);
+
+	GLCall(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0));
+	GLCall(glBindBuffer(GL_ARRAY_BUFFER, 0));
+	GLCall(glBindVertexArray(0));
 }
 
 static void AVLTree_Draw(AVLTree* avl_tree, float window_width, float window_height) {
@@ -304,8 +355,13 @@ static void AVLTree_Draw(AVLTree* avl_tree, float window_width, float window_hei
 	assert(0.0f < window_width);
 	assert(0.0f < window_height);
 
+	GLCall(glLineWidth(4.0f));
+	GLCall(glEnable(GL_DEPTH_TEST));
 	GLCall(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
 
+	AVLTree_DrawBackground(avl_tree->background, window_width, window_height);
+
+	GLCall(glBindVertexArray(avl_tree->vao));
 	GLCall(glBindBuffer(GL_ARRAY_BUFFER, avl_tree->vbo));
 	GLCall(glUseProgram(avl_tree->shader));
 
@@ -350,9 +406,6 @@ static void AVLTree_Draw(AVLTree* avl_tree, float window_width, float window_hei
 		}
 	}
 
-	GLCall(glLineWidth(4.0f));
-	GLCall(glEnable(GL_DEPTH_TEST));
-
 	int model_location = glGetUniformLocation(avl_tree->shader, "model");
 	int view_location = glGetUniformLocation(avl_tree->shader, "view");
 	int projection_location = glGetUniformLocation(avl_tree->shader, "projection");
@@ -374,4 +427,5 @@ static void AVLTree_Draw(AVLTree* avl_tree, float window_width, float window_hei
 	GLCall(glDrawArrays(GL_LINES, 0, avl_tree->size * VERTICES_PER_CUBE));
 
 	GLCall(glBindBuffer(GL_ARRAY_BUFFER, 0));
+	GLCall(glBindVertexArray(0));
 }

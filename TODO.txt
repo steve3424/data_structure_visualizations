@@ -1,0 +1,4 @@
+- Add functions to color cubes and digits
+- Add functions to get specified vertex of cube (top left, bottom right)
+- Stutters when loading background image, maybe fix that
+- Not sure if the buffer orphaning strategy is good or even implemented correctly. Maybe try something else.
