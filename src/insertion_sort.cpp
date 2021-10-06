@@ -5,9 +5,9 @@
 #define THRESHOLD 0.001f
 
 // units is a unit cube 1.0f
-static float units_per_second = 1.0f;
-static float const frames_per_second = 60.0f;
-static float const y_lift_val = 1.3f;
+static float isort_units_per_second = 1.0f;
+static float const isort_frames_per_second = 60.0f;
+static float const isort_y_lift_val = 1.3f;
 
 typedef enum {
 	ISORT_INITIALIZING,
@@ -48,6 +48,7 @@ typedef struct {
 	GameBackground background;
 } ISort;
 
+// TODO: this should probably just take ISortNode as argument
 inline bool ISort_AnimationFinished(float const location, float const destination) {
 	float diff = destination - location;
 	if(diff < 0.0f) {
@@ -59,7 +60,7 @@ inline bool ISort_AnimationFinished(float const location, float const destinatio
 
 inline float ISort_SetVelocity(float const location, float const destination) {
 	float dist = destination - location;
-	float units_per_frame = units_per_second / frames_per_second;
+	float units_per_frame = isort_units_per_second / isort_frames_per_second;
 	float frames_to_reach_dest = dist / units_per_frame;
 	if(frames_to_reach_dest < 0.0f) {
 		frames_to_reach_dest *= -1.0f;
@@ -148,34 +149,34 @@ INTERNAL void ISort_UpdateVelocitySetting(ISortNode* nodes, GameInput* input) {
 	assert(input);
 
 	if(input->num_0.is_down) {
-		units_per_second = 1.0f;
+		isort_units_per_second = 1.0f;
 	}
 	if(input->num_1.is_down) {
-		units_per_second = 3.0f;
+		isort_units_per_second = 3.0f;
 	}
 	if(input->num_2.is_down) {
-		units_per_second = 7.0f;
+		isort_units_per_second = 7.0f;
 	}
 	if(input->num_3.is_down) {
-		units_per_second = 10.0f;
+		isort_units_per_second = 10.0f;
 	}
 	if(input->num_4.is_down) {
-		units_per_second = 15.0f;
+		isort_units_per_second = 15.0f;
 	}
 	if(input->num_5.is_down) {
-		units_per_second = 20.0f;
+		isort_units_per_second = 20.0f;
 	}
 	if(input->num_6.is_down) {
-		units_per_second = 32.0f;
+		isort_units_per_second = 32.0f;
 	}
 	if(input->num_7.is_down) {
-		units_per_second = 50.0f;
+		isort_units_per_second = 50.0f;
 	}
 	if(input->num_8.is_down) {
-		units_per_second = 75.0f;
+		isort_units_per_second = 75.0f;
 	}
 	if(input->num_9.is_down) {
-		units_per_second = 100.0f;
+		isort_units_per_second = 100.0f;
 	}
 
 	for(int i = 0; i < INSERTION_SORT_SIZE; ++i) {
@@ -298,7 +299,7 @@ INTERNAL void ISort_Update(ISort* isort, GameInput* input) {
 					// begin sorting
 					else {
 						isort->nodes[isort->selected_val_index].y_dest = isort->nodes[1].cube.cube_vertices[0].y + 
-							 											 y_lift_val;
+							 											 isort_y_lift_val;
 						isort->nodes[isort->selected_val_index].y_vel  = ISort_SetVelocity(isort->nodes[1].cube.cube_vertices[0].y,
 																                           isort->nodes[1].y_dest);
 
@@ -333,9 +334,9 @@ INTERNAL void ISort_Update(ISort* isort, GameInput* input) {
 					compare_node->cube.cube_vertices[j].b = 0.0f;
 				}
 
-				static int timer = 30 / (int)units_per_second;
+				static int timer = 30 / (int)isort_units_per_second;
 				if(timer == 0) {
-					timer = 30 / (int)units_per_second;
+					timer = 30 / (int)isort_units_per_second;
 
 					if(selected_node->val < compare_node->val) {
 						// leave trace for left node
@@ -517,7 +518,7 @@ INTERNAL void ISort_Draw(ISort* isort, float window_width, float window_height) 
 					                      isort->camera.y, 
 					                      isort->camera.z));
 	glm::mat4 projection = glm::perspective(glm::radians(75.0f), 
-			                                (float)window_width / (float)window_height, 
+			                                window_width / window_height, 
 											0.1f, 100.0f);
 
 	glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
