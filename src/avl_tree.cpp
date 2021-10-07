@@ -538,19 +538,6 @@ void AVLTree_Update(AVLTree* avl_tree, GameInput* input) {
 		}
 	}
 
-	if(input->s.is_down) {
-		// TODO: Delete
-		AVLTreeBFSNode t = AVLTree_BFS(avl_tree);
-		while(t.node) {
-			t = AVLTree_BFS(avl_tree);
-		}
-
-		t = AVLTree_BFS(avl_tree);
-		while(t.node) {
-			t = AVLTree_BFS(avl_tree);
-		}
-	}
-
 	switch(avl_tree->current_state) {
 		case AVLTREE_INITIALIZING:
 		{
@@ -633,7 +620,7 @@ AVLTree* AVLTree_Init() {
 	const float y_start = 0.0f;
 	const float y_spacing = 3.0f; // space between successive levels of the tree
 
-	// BFS
+	// Generate node geometry
 	AVLTreeBFSNode node = AVLTree_BFS(avl_tree);
 	while(node.node) {
 		AVLNode* current_node = node.node;
@@ -677,7 +664,6 @@ AVLTree* AVLTree_Init() {
 
 	avl_tree->current_state = AVLTREE_INITIALIZING;
 	avl_tree->previous_state = AVLTREE_PAUSED;
-	// TODO: Adjust camera
 	avl_tree->camera.x = 0.0f;
 	avl_tree->camera.y = -6.0f;
 	avl_tree->camera.z = -50.0f;
