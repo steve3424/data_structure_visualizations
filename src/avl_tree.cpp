@@ -310,10 +310,10 @@ static AVLTreeBFSNode AVLTree_BFS(AVLTree* avl_tree) {
  * State machine helper functions			 *
  *********************************************/
 static inline bool AVLTree_AnimationFinished(AVLNode* node) {
-	float x_diff = fabs(node->x_dest - node->cube.cube_vertices[0].x);
-	float y_diff = fabs(node->y_dest - node->cube.cube_vertices[0].y);
-	bool x_finished = x_diff <= AVL_THRESHOLD;
-	bool y_finished = y_diff <= AVL_THRESHOLD;
+	float x_dist = fabs(node->x_dest - node->cube.cube_vertices[0].x);
+	float y_dist = fabs(node->y_dest - node->cube.cube_vertices[0].y);
+	bool x_finished = x_dist <= AVL_THRESHOLD;
+	bool y_finished = y_dist <= AVL_THRESHOLD;
 	if(x_finished) {
 		node->x_vel = 0.0f;
 	}
@@ -324,15 +324,19 @@ static inline bool AVLTree_AnimationFinished(AVLNode* node) {
 	return x_finished && y_finished;
 }
 
-inline float AVLTree_SetVelocity(float const location, float const destination, float const scale) {
-	float dist = destination - location;
-	float units_per_frame = (avl_tree_units_per_second * scale) / avl_tree_frames_per_second;
-	float frames_to_reach_dest = dist / units_per_frame;
-	if(frames_to_reach_dest < 0.0f) {
-		frames_to_reach_dest *= -1.0f;
-	}
-	int new_frames_to_reach_dest = (int)(frames_to_reach_dest + 1.0f);
-	return dist / (float)new_frames_to_reach_dest;
+inline void AVLTree_SetVelocity(AVLNode* node, float const x_scale, float const y_scale) {
+	float x_dist = node->x_dest - node->cube.cube_vertices[0].x;
+	float y_dist = node->y_dest - node->cube.cube_vertices[0].y;
+
+	float x_units_per_frame = (avl_tree_units_per_second * x_scale) / avl_tree_frames_per_second;
+	float y_units_per_frame = (avl_tree_units_per_second * y_scale) / avl_tree_frames_per_second;
+	float x_frames_to_reach_dest = fabs(x_dist / x_units_per_frame);
+	float y_frames_to_reach_dest = fabs(y_dist / y_units_per_frame);
+	int x_frames_rounded_up = (int)(x_frames_to_reach_dest + 1.0f);
+	int y_frames_rounded_up = (int)(y_frames_to_reach_dest + 1.0f);
+
+	node->x_vel = x_dist / (float)x_frames_rounded_up;
+	node->y_vel = y_dist / (float)y_frames_rounded_up;
 }
 
 INTERNAL void AVLTree_DrawBackground(GameBackground gb, float window_width, float window_height) {
@@ -549,45 +553,44 @@ AVLTree* AVLTree_Init() {
 	const float y_spacing = 3.0f; // space between successive levels of the tree
 
 	// Generate node geometry
-	AVLTreeBFSNode node = AVLTree_BFS(avl_tree);
-	while(node.node) {
-		AVLNode* current_node = node.node;
+	AVLTreeBFSNode bfs_node = AVLTree_BFS(avl_tree);
+	while(bfs_node.node) {
+		AVLNode* node = bfs_node.node;
 
-		float split = exp2f((float)(node.level + 1));
+		float split = exp2f((float)(bfs_node.level + 1));
 		float x_width = (max_tree_width / split);
 		// map node indices to odd #'s
-		uint64_t split_index = (node.level_index * 2) + 1;
+		uint64_t split_index = (bfs_node.level_index * 2) + 1;
 		// x_pos, y_pos is the center of the node
 		float x_pos = x_start + ((float)split_index * x_width);
-		float y_pos = y_start - ((float)node.level * y_spacing);
+		float y_pos = y_start - ((float)bfs_node.level * y_spacing);
 
 		// Generate all nodes at the origin and set their
 		// destinations to their proper positions in the tree.
 		// Destinations are based on top left corner (first cube index)
 		// of the GameCube.
-		current_node->cube = GenCube(0.0f, 0.0f, 0.0f, current_node->val, 0.0f, 0.0f, 1.0f);
-		// TODO: This would be half node width if I add that as a paramert in engine.cpp
+		node->cube = GenCube(0.0f, 0.0f, 0.0f, node->val, 0.0f, 0.0f, 1.0f);
+		// TODO: This would be half node width if I add that as a parameter in engine.cpp
 		//       where the nodes are defined and generated.
-		current_node->x_dest = x_pos - 0.5f;
-		current_node->y_dest = y_pos + 0.5f;
-		current_node->x_vel = AVLTree_SetVelocity(current_node->cube.cube_vertices[0].x, current_node->x_dest, 1.0f); 
-		current_node->y_vel = AVLTree_SetVelocity(current_node->cube.cube_vertices[0].y, current_node->y_dest, 1.0f); 
+		node->x_dest = x_pos - 0.5f;
+		node->y_dest = y_pos + 0.5f;
+		AVLTree_SetVelocity(node, 1.0f, 1.0f);
 
 		// TODO: Maybe I can refactor this so I am only setting the velocity once.
 		// I want the node to reach both the x_dest and y_dest at the same time so
 		// whichever destination is closer, I scale that velocity down proportionally.
-		if(current_node != avl_tree->root) {
+		if(node != avl_tree->root) {
 			float x_over_y = fabs(x_pos / y_pos);
 			float y_over_x = fabs(y_pos / x_pos);
 			if(x_over_y < y_over_x) {
-				current_node->x_vel = AVLTree_SetVelocity(current_node->cube.cube_vertices[0].x, current_node->x_dest, x_over_y);
+				AVLTree_SetVelocity(node, x_over_y, 1.0f);
 			}
 			else {
-				current_node->y_vel = AVLTree_SetVelocity(current_node->cube.cube_vertices[0].y, current_node->y_dest, y_over_x);
+				AVLTree_SetVelocity(node, 1.0f, y_over_x);
 			}
 		}
 
-		node = AVLTree_BFS(avl_tree);
+		bfs_node = AVLTree_BFS(avl_tree);
 	}
 
 	avl_tree->current_state = AVLTREE_INITIALIZING;
