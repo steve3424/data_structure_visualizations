@@ -220,11 +220,12 @@ void AVLTree_Insert(AVLTree *const tree, const int val) {
 }
 
 /* Streams nodes from a tree in BFS fashion, e.g.:
- * AVLTreeBFSNode node = AVLTree_BFS(avl_tree);
- * while(node.node) {
- *		do stuff
- *		node = AVLTree_BFS(avl_tree);
- * }
+ 
+AVLTreeBFSNode bfs_node = AVLTree_BFS(avl_tree);
+while(bfs_node.node) {                          
+	AVLNode* node = bfs_node.node;                 
+	bfs_node = AVLTree_BFS(avl_tree);          
+}                                               
  *
  */
 typedef struct {
@@ -358,89 +359,67 @@ static void AVLTree_UpdateGeometry(AVLTree* avl_tree) {
 		return;
 	}
 
-	// BFS
-	int push = 0;
-	int pop = 0;
-	int size = 0;
-	AVLNode* nodes[MAX_DIGITS] = {NULL};
-	nodes[push] = avl_tree->root;
-	++push;
-	++size;
-	while(size > 0) {
-		int nodes_at_this_level = size;
-		for(int i = 0; i < nodes_at_this_level; ++i) {
-			AVLNode* node = nodes[pop];
-			GameCube* cube = &node->cube;
-			pop = (pop + 1) % MAX_DIGITS;
-			--size;
+	AVLTreeBFSNode bfs_node = AVLTree_BFS(avl_tree);
+	while(bfs_node.node) {
+		AVLNode* node = bfs_node.node;
+		GameCube* cube = &node->cube;
 
-			int cube_vertices = sizeof(cube->cube_vertices) / sizeof(Vertex);
-			for(int j = 0; j < cube_vertices; ++j) {
-				cube->cube_vertices[j].x += node->x_vel;
-				cube->cube_vertices[j].y += node->y_vel;
-			}
-			int digit_vertices = sizeof(cube->digit_vertices) / sizeof(Vertex);
-			for(int j = 0; j < digit_vertices; ++j) {
-				cube->digit_vertices[j].x += node->x_vel;
-				cube->digit_vertices[j].y += node->y_vel;
-			}
+		int cube_vertices = sizeof(cube->cube_vertices) / sizeof(Vertex);
+		for(int j = 0; j < cube_vertices; ++j) {
+			cube->cube_vertices[j].x += node->x_vel;
+			cube->cube_vertices[j].y += node->y_vel;
+		}
+		int digit_vertices = sizeof(cube->digit_vertices) / sizeof(Vertex);
+		for(int j = 0; j < digit_vertices; ++j) {
+			cube->digit_vertices[j].x += node->x_vel;
+			cube->digit_vertices[j].y += node->y_vel;
+		}
 	
-			// draw line to parent
-			// lines will go from center top of child
-			// to center bottom of parent
-			// TODO: Change this if I ever #define node width
-			// TODO: This probably shouldn't be here. This only needs to be
-			//       done during rotations and not during static drawing.
-			if(node->parent) {
-				AVLNode* parent = node->parent;
-				if(node == parent->left) {
-					node->cube.line_vertices[0] = node->cube.cube_vertices[1];
-					node->cube.line_vertices[1] = parent->cube.cube_vertices[5];
+		// draw line to parent
+		// lines will go from center top of child
+		// to center bottom of parent
+		// TODO: Change this if I ever #define node width
+		// TODO: This probably shouldn't be here. This only needs to be
+		//       done during rotations and not during static drawing.
+		if(node->parent) {
+			AVLNode* parent = node->parent;
+			if(node == parent->left) {
+				node->cube.line_vertices[0] = node->cube.cube_vertices[1];
+				node->cube.line_vertices[1] = parent->cube.cube_vertices[5];
 
-					node->cube.line_vertices[0].x -= 0.5f;
-					node->cube.line_vertices[0].z -= 0.5f;
-					node->cube.line_vertices[0].r = 0.0f;
-					node->cube.line_vertices[0].g = 1.0f;
-					node->cube.line_vertices[0].b = 0.0f;
+				node->cube.line_vertices[0].x -= 0.5f;
+				node->cube.line_vertices[0].z -= 0.5f;
+				node->cube.line_vertices[0].r = 0.0f;
+				node->cube.line_vertices[0].g = 1.0f;
+				node->cube.line_vertices[0].b = 0.0f;
 
-					node->cube.line_vertices[1].x += 0.5f;
-					node->cube.line_vertices[1].z -= 0.5f;
-					node->cube.line_vertices[1].r = 0.0f;
-					node->cube.line_vertices[1].g = 1.0f;
-					node->cube.line_vertices[1].b = 0.0f;
-				}
-				else {
-					// line will go from top left of this cube
-					// to bottom right of parent
-					node->cube.line_vertices[0] = node->cube.cube_vertices[0];
-					node->cube.line_vertices[1] = parent->cube.cube_vertices[3];
-
-					node->cube.line_vertices[0].x += 0.5f;
-					node->cube.line_vertices[0].z -= 0.5f;
-					node->cube.line_vertices[0].r = 0.0f;
-					node->cube.line_vertices[0].g = 1.0f;
-					node->cube.line_vertices[0].b = 0.0f;
-
-					node->cube.line_vertices[1].x -= 0.5f;
-					node->cube.line_vertices[1].z -= 0.5f;
-					node->cube.line_vertices[1].r = 0.0f;
-					node->cube.line_vertices[1].g = 1.0f;
-					node->cube.line_vertices[1].b = 0.0f;
-				}
+				node->cube.line_vertices[1].x += 0.5f;
+				node->cube.line_vertices[1].z -= 0.5f;
+				node->cube.line_vertices[1].r = 0.0f;
+				node->cube.line_vertices[1].g = 1.0f;
+				node->cube.line_vertices[1].b = 0.0f;
 			}
+			else {
+				// line will go from top left of this cube
+				// to bottom right of parent
+				node->cube.line_vertices[0] = node->cube.cube_vertices[0];
+				node->cube.line_vertices[1] = parent->cube.cube_vertices[3];
 
-			if(node->left) {
-				nodes[push] = node->left;
-				push = (push + 1) % MAX_DIGITS;
-				++size;
-			}
+				node->cube.line_vertices[0].x += 0.5f;
+				node->cube.line_vertices[0].z -= 0.5f;
+				node->cube.line_vertices[0].r = 0.0f;
+				node->cube.line_vertices[0].g = 1.0f;
+				node->cube.line_vertices[0].b = 0.0f;
 
-			if(node->right) {
-				nodes[push] = node->right;
-				push = (push + 1) % MAX_DIGITS;
-				++size;
+				node->cube.line_vertices[1].x -= 0.5f;
+				node->cube.line_vertices[1].z -= 0.5f;
+				node->cube.line_vertices[1].r = 0.0f;
+				node->cube.line_vertices[1].g = 1.0f;
+				node->cube.line_vertices[1].b = 0.0f;
 			}
 		}
+
+		bfs_node = AVLTree_BFS(avl_tree);
 	}
 }
 
@@ -467,40 +446,17 @@ void AVLTree_Draw(AVLTree* avl_tree, float window_width, float window_height) {
 
 	unsigned int buffer_size = avl_tree->size * sizeof(GameCube);
 	GLCall(glBufferData(GL_ARRAY_BUFFER, buffer_size, NULL, GL_DYNAMIC_DRAW));
-
-	// BFS
-	int push = 0;
-	int pop = 0;
-	int size = 0;
-	AVLNode* nodes[MAX_DIGITS] = {NULL};
-	nodes[push] = avl_tree->root;
-	++push;
-	++size;
 	unsigned int buffer_write_index = 0;
-	while(size > 0) {
-		int nodes_at_this_level = size;
-		for(int i = 0; i < nodes_at_this_level; ++i) {
-			AVLNode* current_node = nodes[pop];
-			pop = (pop + 1) % MAX_DIGITS;
-			--size;
+ 	AVLTreeBFSNode bfs_node = AVLTree_BFS(avl_tree);
+ 	while(bfs_node.node) {
+		AVLNode* node = bfs_node.node;
 
-			GLCall(glBufferSubData(GL_ARRAY_BUFFER, buffer_write_index, sizeof(GameCube), 
-						           &current_node->cube));
-			buffer_write_index += sizeof(GameCube);
+		GLCall(glBufferSubData(GL_ARRAY_BUFFER, buffer_write_index, 
+					           sizeof(GameCube), &node->cube));
+		buffer_write_index += sizeof(GameCube);
 
-			if(current_node->left) {
-				nodes[push] = current_node->left;
-				push = (push + 1) % MAX_DIGITS;
-				++size;
-			}
-
-			if(current_node->right) {
-				nodes[push] = current_node->right;
-				push = (push + 1) % MAX_DIGITS;
-				++size;
-			}
-		}
-	}
+ 	   	bfs_node = AVLTree_BFS(avl_tree);
+ 	}
 
 	int model_location = glGetUniformLocation(avl_tree->shader, "model");
 	int view_location = glGetUniformLocation(avl_tree->shader, "view");
@@ -541,51 +497,29 @@ void AVLTree_Update(AVLTree* avl_tree, GameInput* input) {
 	switch(avl_tree->current_state) {
 		case AVLTREE_INITIALIZING:
 		{
-			// BFS
-			int push = 0;
-			int pop = 0;
-			int size = 0;
-			AVLNode* nodes[MAX_DIGITS] = {NULL};
-			nodes[push] = avl_tree->root;
-			++push;
-			++size;
 			int num_nodes_finished = 0;
-			while(size > 0) {
-				int nodes_at_this_level = size;
-				for(int i = 0; i < nodes_at_this_level; ++i) {
-					AVLNode* node = nodes[pop];
-					GameCube* cube = &node->cube;
-					pop = (pop + 1) % MAX_DIGITS;
-					--size;
-					
-					bool x_animation_finished = AVLTree_AnimationFinished(cube->cube_vertices[0].x, node->x_dest);
-					bool y_animation_finished = AVLTree_AnimationFinished(cube->cube_vertices[0].y, node->y_dest);
-					if(x_animation_finished) {
-						node->x_vel = 0.0f;
-					}
-					if(y_animation_finished) {
-						node->y_vel = 0.0f;
-					}
-					if(x_animation_finished && y_animation_finished) {
-						num_nodes_finished++;
-					}
-			
-					if(node->left) {
-						nodes[push] = node->left;
-						push = (push + 1) % MAX_DIGITS;
-						++size;
-					}
 
-					if(node->right) {
-						nodes[push] = node->right;
-						push = (push + 1) % MAX_DIGITS;
-						++size;
-					}
+			AVLTreeBFSNode bfs_node = AVLTree_BFS(avl_tree);
+			while(bfs_node.node) {                          
+				AVLNode* node = bfs_node.node;                 
+				GameCube* cube = &node->cube;
+
+				bool x_animation_finished = AVLTree_AnimationFinished(cube->cube_vertices[0].x, node->x_dest);
+				bool y_animation_finished = AVLTree_AnimationFinished(cube->cube_vertices[0].y, node->y_dest);
+				if(x_animation_finished) {
+					node->x_vel = 0.0f;
 				}
-			}
+				if(y_animation_finished) {
+					node->y_vel = 0.0f;
+				}
+				if(x_animation_finished && y_animation_finished) {
+					num_nodes_finished++;
+				}
 			
+				bfs_node = AVLTree_BFS(avl_tree);          
+			}                                               
+
 			if(num_nodes_finished == avl_tree->size) {
-				// change state
 				avl_tree->current_state = AVLTREE_STATIC;
 			}
 		} break;
