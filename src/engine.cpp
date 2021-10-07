@@ -87,7 +87,7 @@ INTERNAL void GameUpdateAndRender(GameMemory* memory, GameInput* input) {
 				avl_tree = (AVLTree*)game_state->data_structures[AVL_TREE];
 			}
 			UpdateCamera(&avl_tree->camera, input);
-			AVLTree_Update(avl_tree);
+			AVLTree_Update(avl_tree, input);
 			AVLTree_Draw(avl_tree, (float)game_state->window_width, (float)game_state->window_height);
 		} break;
 
