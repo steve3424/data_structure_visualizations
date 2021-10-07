@@ -309,17 +309,19 @@ static AVLTreeBFSNode AVLTree_BFS(AVLTree* avl_tree) {
 /*********************************************
  * State machine helper functions			 *
  *********************************************/
-// TODO: this should probably just take Node as argument
-// TODO: I think if the animation is finished, it should set the location to destination.
-//       This might mitigate any floating point inaccuracies that could creep in leaving
-//       the location somewhere in the threshold interval
-static inline bool AVLTree_AnimationFinished(float const location, float const destination) {
-	float diff = destination - location;
-	if(diff < 0.0f) {
-		diff *= -1.0f;
+static inline bool AVLTree_AnimationFinished(AVLNode* node) {
+	float x_diff = fabs(node->x_dest - node->cube.cube_vertices[0].x);
+	float y_diff = fabs(node->y_dest - node->cube.cube_vertices[0].y);
+	bool x_finished = x_diff <= AVL_THRESHOLD;
+	bool y_finished = y_diff <= AVL_THRESHOLD;
+	if(x_finished) {
+		node->x_vel = 0.0f;
+	}
+	if(y_finished) {
+		node->y_vel = 0.0f;
 	}
 
-	return diff <= AVL_THRESHOLD;
+	return x_finished && y_finished;
 }
 
 inline float AVLTree_SetVelocity(float const location, float const destination, float const scale) {
@@ -504,15 +506,7 @@ void AVLTree_Update(AVLTree* avl_tree, GameInput* input) {
 				AVLNode* node = bfs_node.node;                 
 				GameCube* cube = &node->cube;
 
-				bool x_animation_finished = AVLTree_AnimationFinished(cube->cube_vertices[0].x, node->x_dest);
-				bool y_animation_finished = AVLTree_AnimationFinished(cube->cube_vertices[0].y, node->y_dest);
-				if(x_animation_finished) {
-					node->x_vel = 0.0f;
-				}
-				if(y_animation_finished) {
-					node->y_vel = 0.0f;
-				}
-				if(x_animation_finished && y_animation_finished) {
+				if(AVLTree_AnimationFinished(node)) {
 					num_nodes_finished++;
 				}
 			
