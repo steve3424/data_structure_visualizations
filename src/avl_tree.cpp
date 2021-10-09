@@ -1,17 +1,25 @@
-static int global_tree_size = 100;
+static int         global_avl_tree_init_size = 16;
+static float       global_avl_tree_units_per_second = 7.0f; // units is a unit cube 1.0f
+static float const global_avl_tree_frames_per_second = 60.0f;
+static int         global_avl_tree_timer_reset = 240 / (int)global_avl_tree_units_per_second;
+static float const global_node_width = 1.0f; // this is fixed based on the model sent to the GPU
+static float const global_node_margin = 0.75f; // space between the nodes at the bottom level
+static float const global_y_spacing = 3.0f; // space between successive levels of the tree
+static float const global_y_insert_node_start = 1.3f; // where insert node begins, this should be 
+                                                      // subtracted on final insert
 
 #include "engine.h"
 #include "windows.h"
 
 #define AVL_THRESHOLD 0.001f
 
-// units is a unit cube 1.0f
-static float avl_tree_units_per_second = 10.0f;
-static float const avl_tree_frames_per_second = 60.0f;
-
 typedef enum {
 	AVLTREE_INITIALIZING,
 	AVLTREE_STATIC,
+	AVLTREE_COMPARING,
+	AVLTREE_VAL_MOVING,
+	AVLTREE_DELETE_INSERT_VAL,
+	AVLTREE_INSERT_VAL,
 	AVLTREE_PAUSED
 } AVLTreeState;
 
@@ -46,6 +54,10 @@ typedef struct {
 	// state machine stuff
 	AVLTreeState current_state;
 	AVLTreeState previous_state;
+	// TODO: Maybe I can connect it as root 
+	//       temporarily or something
+	AVLNode* inserting_node;
+	AVLNode* compare_node;
 } AVLTree;
 
 
@@ -309,6 +321,24 @@ static AVLTreeBFSNode AVLTree_BFS(AVLTree* avl_tree) {
 /*********************************************
  * State machine helper functions			 *
  *********************************************/
+static float AVLTree_GetNodeSplitWidth(const AVLNode* node, const int tree_height) {
+	assert(node);
+
+	// get node level in tree
+	int level = 0;
+	while(node->parent) {
+		++level;
+		node = node->parent;
+	}
+	// get split of level below current
+	float split = exp2f((float)(level + 2));
+	const int   bottom_level_width = 1 << tree_height;
+	const float max_tree_width = (float)bottom_level_width * 
+		                         (global_node_width + global_node_margin) - 
+								 global_node_margin; // subtract one node_margin for the far right node
+	return max_tree_width / split;
+}
+
 static inline bool AVLTree_AnimationFinished(AVLNode* node) {
 	float x_dist = fabs(node->x_dest - node->cube.cube_vertices[0].x);
 	float y_dist = fabs(node->y_dest - node->cube.cube_vertices[0].y);
@@ -321,22 +351,22 @@ static inline bool AVLTree_AnimationFinished(AVLNode* node) {
 		node->y_vel = 0.0f;
 	}
 
-	return x_finished && y_finished;
+	return (node->x_vel == 0.0f) && (node->y_vel == 0.0f);
 }
 
 inline void AVLTree_SetVelocity(AVLNode* node, float const x_scale, float const y_scale) {
 	float x_dist = node->x_dest - node->cube.cube_vertices[0].x;
 	float y_dist = node->y_dest - node->cube.cube_vertices[0].y;
 
-	float x_units_per_frame = (avl_tree_units_per_second * x_scale) / avl_tree_frames_per_second;
-	float y_units_per_frame = (avl_tree_units_per_second * y_scale) / avl_tree_frames_per_second;
+	float x_units_per_frame = (global_avl_tree_units_per_second * x_scale) / global_avl_tree_frames_per_second;
+	float y_units_per_frame = (global_avl_tree_units_per_second * y_scale) / global_avl_tree_frames_per_second;
 	float x_frames_to_reach_dest = fabs(x_dist / x_units_per_frame);
 	float y_frames_to_reach_dest = fabs(y_dist / y_units_per_frame);
 	int x_frames_rounded_up = (int)(x_frames_to_reach_dest + 1.0f);
 	int y_frames_rounded_up = (int)(y_frames_to_reach_dest + 1.0f);
 
-	node->x_vel = x_dist / (float)x_frames_rounded_up;
-	node->y_vel = y_dist / (float)y_frames_rounded_up;
+	node->x_vel = x_scale == 0.0f ? 0.0f : x_dist / (float)x_frames_rounded_up;
+	node->y_vel = y_scale == 0.0f ? 0.0f : y_dist / (float)y_frames_rounded_up;
 }
 
 INTERNAL void AVLTree_DrawBackground(GameBackground gb, float window_width, float window_height) {
@@ -395,15 +425,15 @@ static void AVLTree_UpdateGeometry(AVLTree* avl_tree) {
 
 				node->cube.line_vertices[0].x -= 0.5f;
 				node->cube.line_vertices[0].z -= 0.5f;
-				node->cube.line_vertices[0].r = 0.0f;
+				node->cube.line_vertices[0].r = 1.0f;
 				node->cube.line_vertices[0].g = 1.0f;
-				node->cube.line_vertices[0].b = 0.0f;
+				node->cube.line_vertices[0].b = 153.0f / 255.0f;
 
 				node->cube.line_vertices[1].x += 0.5f;
 				node->cube.line_vertices[1].z -= 0.5f;
-				node->cube.line_vertices[1].r = 0.0f;
+				node->cube.line_vertices[1].r = 1.0f;
 				node->cube.line_vertices[1].g = 1.0f;
-				node->cube.line_vertices[1].b = 0.0f;
+				node->cube.line_vertices[1].b = 153.0f / 255.0f;
 			}
 			else {
 				// line will go from top left of this cube
@@ -413,24 +443,40 @@ static void AVLTree_UpdateGeometry(AVLTree* avl_tree) {
 
 				node->cube.line_vertices[0].x += 0.5f;
 				node->cube.line_vertices[0].z -= 0.5f;
-				node->cube.line_vertices[0].r = 0.0f;
+				node->cube.line_vertices[0].r = 1.0f;
 				node->cube.line_vertices[0].g = 1.0f;
-				node->cube.line_vertices[0].b = 0.0f;
+				node->cube.line_vertices[0].b = 153.0f / 255.0f;
 
 				node->cube.line_vertices[1].x -= 0.5f;
 				node->cube.line_vertices[1].z -= 0.5f;
-				node->cube.line_vertices[1].r = 0.0f;
+				node->cube.line_vertices[1].r = 1.0f;
 				node->cube.line_vertices[1].g = 1.0f;
-				node->cube.line_vertices[1].b = 0.0f;
+				node->cube.line_vertices[1].b = 153.0f / 255.0f;
 			}
 		}
 
 		bfs_node = AVLTree_BFS(avl_tree);
 	}
+	
+	if(avl_tree->inserting_node) {
+		AVLNode* node = avl_tree->inserting_node;
+		GameCube* cube = &node->cube;
+
+		int cube_vertices = sizeof(cube->cube_vertices) / sizeof(Vertex);
+		for(int j = 0; j < cube_vertices; ++j) {
+			cube->cube_vertices[j].x += node->x_vel;
+			cube->cube_vertices[j].y += node->y_vel;
+		}
+		int digit_vertices = sizeof(cube->digit_vertices) / sizeof(Vertex);
+		for(int j = 0; j < digit_vertices; ++j) {
+			cube->digit_vertices[j].x += node->x_vel;
+			cube->digit_vertices[j].y += node->y_vel;
+		}
+	}
 }
 
 /*********************************************
- * State machine interface                   *
+ * Public functions                          *
  *********************************************/
 void AVLTree_Draw(AVLTree* avl_tree, float window_width, float window_height) {
 	assert(avl_tree);
@@ -450,7 +496,8 @@ void AVLTree_Draw(AVLTree* avl_tree, float window_width, float window_height) {
 	GLCall(glBindBuffer(GL_ARRAY_BUFFER, avl_tree->vbo));
 	GLCall(glUseProgram(avl_tree->shader));
 
-	unsigned int buffer_size = avl_tree->size * sizeof(GameCube);
+	// NOTE: One for inserting node possibly
+	unsigned int buffer_size = MAX_DIGITS * sizeof(GameCube);
 	GLCall(glBufferData(GL_ARRAY_BUFFER, buffer_size, NULL, GL_DYNAMIC_DRAW));
 	unsigned int buffer_write_index = 0;
  	AVLTreeBFSNode bfs_node = AVLTree_BFS(avl_tree);
@@ -463,6 +510,11 @@ void AVLTree_Draw(AVLTree* avl_tree, float window_width, float window_height) {
 
  	   	bfs_node = AVLTree_BFS(avl_tree);
  	}
+
+	if(avl_tree->inserting_node) {
+		GLCall(glBufferSubData(GL_ARRAY_BUFFER, buffer_write_index, 
+					           sizeof(GameCube), &avl_tree->inserting_node->cube));
+	}
 
 	int model_location = glGetUniformLocation(avl_tree->shader, "model");
 	int view_location = glGetUniformLocation(avl_tree->shader, "view");
@@ -482,7 +534,11 @@ void AVLTree_Draw(AVLTree* avl_tree, float window_width, float window_height) {
 	glUniformMatrix4fv(projection_location, 1, GL_FALSE, glm::value_ptr(projection));
 
 	unsigned int vertices_per_cube = sizeof(GameCube) / sizeof(Vertex);
-	GLCall(glDrawArrays(GL_LINES, 0, avl_tree->size * VERTICES_PER_CUBE));
+	// NOTE: One for inserting node possibly
+	unsigned int num_cubes = avl_tree->inserting_node ?
+		                     avl_tree->size + 1       :
+							 avl_tree->size;
+	GLCall(glDrawArrays(GL_LINES, 0, num_cubes * VERTICES_PER_CUBE));
 
 	GLCall(glBindBuffer(GL_ARRAY_BUFFER, 0));
 	GLCall(glBindVertexArray(0));
@@ -524,6 +580,161 @@ void AVLTree_Update(AVLTree* avl_tree, GameInput* input) {
 
 		case AVLTREE_STATIC: 
 		{
+			if(input->a.is_down) {
+				// TODO: I could take care of root case with regular insertion code
+				int val = 33; //rand() % MAX_DIGITS;
+				AVLNode* node = (AVLNode*)calloc(1, sizeof(AVLNode));
+				node->val = val;
+				if(!avl_tree->root) {
+					node->cube = GenCube(0.0f, 0.0f, 0.0f, val, 0.0f, 0.0f, 1.0f);
+					avl_tree->root = node;
+					avl_tree->size = 1;
+				}
+				else {
+					node->cube = GenCube(0.0f, global_y_insert_node_start, 0.0f, val, 1.0f, 1.0f, 153.0f / 255.0f);
+					avl_tree->inserting_node = node;
+					avl_tree->compare_node = avl_tree->root;
+					GameCube_SetColor(&avl_tree->compare_node->cube, 1.0f, 1.0f, 153.0f / 255.0f);
+					avl_tree->current_state = AVLTREE_COMPARING;
+				}
+			}
+		} break;
+
+		case AVLTREE_COMPARING: 
+		{
+			if(avl_tree->inserting_node->val == 
+			   avl_tree->compare_node->val) 
+			{
+				AVLTreeBFSNode bfs_node = AVLTree_BFS(avl_tree);
+				while(bfs_node.node) {
+					GameCube_SetColor(&bfs_node.node->cube, 1.0f, 0.0f, 0.0f);
+					bfs_node = AVLTree_BFS(avl_tree);
+				}
+				GameCube_SetColor(&avl_tree->inserting_node->cube, 1.0f, 0.0f, 0.0f);
+				avl_tree->current_state = AVLTREE_DELETE_INSERT_VAL;
+			}
+			else {
+				GameCube_SetColor(&avl_tree->compare_node->cube, 1.0f, 1.0f, 153.0f / 255.0f);
+
+				static int timer = global_avl_tree_timer_reset;
+				if(timer == 0) {
+					timer = global_avl_tree_timer_reset;
+
+					GameCube_SetColor(&avl_tree->compare_node->cube, 0.0f, 0.0f, 1.0f);
+
+					avl_tree->inserting_node->y_dest = avl_tree->inserting_node->cube.cube_vertices[0].y - global_y_spacing;
+					float x_spacing = AVLTree_GetNodeSplitWidth(avl_tree->compare_node, avl_tree->root->height);
+					// Scale velocity in shorter direction so it reaches
+					// both x_dest and y_dest at the same time. Check to
+					// see which one is shorter then set the other scale
+					// back to 1.
+					float x_scale = fabs(x_spacing / global_y_spacing);
+					float y_scale = fabs(global_y_spacing / x_spacing);
+					if(x_scale < y_scale) {
+						y_scale = 1.0f;
+					}
+					else {
+						x_scale = 1.0f;
+					}
+
+					if(avl_tree->inserting_node->val < 
+					   avl_tree->compare_node->val) 
+					{
+						// TODO: Base cases will have inexact velocity since we are changing y_dest
+						//       after we calculate scale values.
+						// BASE CASE: insert into tree
+						if(avl_tree->compare_node->left == NULL) {
+							avl_tree->inserting_node->y_dest -= global_y_insert_node_start;
+							avl_tree->inserting_node->x_dest = avl_tree->inserting_node->cube.cube_vertices[0].x - x_spacing;
+							AVLTree_SetVelocity(avl_tree->inserting_node, x_scale, y_scale);
+							avl_tree->current_state = AVLTREE_INSERT_VAL;
+						}
+						else {
+							avl_tree->inserting_node->x_dest = avl_tree->inserting_node->cube.cube_vertices[0].x - x_spacing;
+							AVLTree_SetVelocity(avl_tree->inserting_node, x_scale, y_scale);
+
+							avl_tree->compare_node = avl_tree->compare_node->left;
+
+							avl_tree->current_state = AVLTREE_VAL_MOVING;
+						}
+					}
+					else if(avl_tree->inserting_node->val > 
+					        avl_tree->compare_node->val) 
+					{
+						// BASE CASE: insert into tree
+						if(avl_tree->compare_node->right == NULL) {
+							avl_tree->inserting_node->y_dest -= global_y_insert_node_start;
+							avl_tree->inserting_node->x_dest = avl_tree->inserting_node->cube.cube_vertices[0].x + x_spacing;
+							AVLTree_SetVelocity(avl_tree->inserting_node, x_scale, y_scale);
+							avl_tree->current_state = AVLTREE_INSERT_VAL;
+						}
+						else {
+							avl_tree->inserting_node->x_dest = avl_tree->inserting_node->cube.cube_vertices[0].x + x_spacing;
+							AVLTree_SetVelocity(avl_tree->inserting_node, x_scale, y_scale);
+
+							avl_tree->compare_node = avl_tree->compare_node->right;
+
+							avl_tree->current_state = AVLTREE_VAL_MOVING;
+						}
+					}
+				}
+				else {
+					--timer;
+				}
+			}
+		} break;
+
+		case AVLTREE_VAL_MOVING: 
+		{
+			if(AVLTree_AnimationFinished(avl_tree->inserting_node)) {
+				avl_tree->current_state = AVLTREE_COMPARING;
+			}
+		} break;
+
+		case AVLTREE_DELETE_INSERT_VAL: 
+		{
+			static int timer = global_avl_tree_timer_reset;
+			if(timer == 0) {
+				timer = global_avl_tree_timer_reset;
+
+				free(avl_tree->inserting_node);
+				avl_tree->inserting_node = NULL;
+				avl_tree->compare_node = NULL;
+				AVLTreeBFSNode bfs_node = AVLTree_BFS(avl_tree);
+				while(bfs_node.node) {
+					GameCube_SetColor(&bfs_node.node->cube, 0.0f, 0.0f, 1.0f);
+					bfs_node = AVLTree_BFS(avl_tree);
+				}
+				avl_tree->current_state = AVLTREE_STATIC;
+			}
+			else {
+				--timer;
+			}
+		} break;
+
+		case AVLTREE_INSERT_VAL:
+		{
+			if(AVLTree_AnimationFinished(avl_tree->inserting_node)) {
+				GameCube_SetColor(&avl_tree->inserting_node->cube, 0.0f, 0.0f, 1.0f);
+
+				// Check to see if it is left or right because
+				// I don't track where it came from.
+				if(avl_tree->inserting_node->val < 
+				   avl_tree->compare_node->val) 
+				{
+					avl_tree->compare_node->left = avl_tree->inserting_node;
+					avl_tree->inserting_node->parent = avl_tree->compare_node;
+				}
+				else {
+					avl_tree->compare_node->right = avl_tree->inserting_node;
+					avl_tree->inserting_node->parent = avl_tree->compare_node;
+				}
+
+				avl_tree->size++;
+				avl_tree->inserting_node = NULL;
+				avl_tree->compare_node = NULL;
+				avl_tree->current_state = AVLTREE_STATIC;
+			}
 		} break;
 	}
 
@@ -539,65 +750,68 @@ AVLTree* AVLTree_Init() {
 
 	// Initialize entire tree since the tree will rotate
 	// and positions will change.
-	for(int i = 0; i < global_tree_size; ++i) {
+	for(int i = 0; i < global_avl_tree_init_size; ++i) {
 		AVLTree_Insert(avl_tree, i);
 	}
 
-	// Set up spacing, width, ..., for 3d node positions
-	const int   bottom_level_width = 1 << avl_tree->root->height;
-	const float node_width = 1.0f; // this is fixed based on the model sent to the GPU
-	const float node_margin = 0.75f; // space between the nodes at the bottom level
-	const float max_tree_width = bottom_level_width * (node_width + node_margin) - node_margin; // subtract one node_margin for the far right node
-	const float x_start = (max_tree_width / 2.0f) * -1.0f;
-	const float y_start = 0.0f;
-	const float y_spacing = 3.0f; // space between successive levels of the tree
+	if(avl_tree->root) {
+		// Set up spacing, width, ..., for 3d node positions
+		const int   bottom_level_width = 1 << avl_tree->root->height;
+		const float max_tree_width = bottom_level_width * (global_node_width + global_node_margin) - global_node_margin; // subtract one node_margin for the far right node
+		const float x_start = (max_tree_width / 2.0f) * -1.0f;
+		const float y_start = 0.0f;
 
-	// Generate node geometry
-	AVLTreeBFSNode bfs_node = AVLTree_BFS(avl_tree);
-	while(bfs_node.node) {
-		AVLNode* node = bfs_node.node;
+		// Generate node geometry
+		AVLTreeBFSNode bfs_node = AVLTree_BFS(avl_tree);
+		while(bfs_node.node) {
+			AVLNode* node = bfs_node.node;
 
-		float split = exp2f((float)(bfs_node.level + 1));
-		float x_width = (max_tree_width / split);
-		// map node indices to odd #'s
-		uint64_t split_index = (bfs_node.level_index * 2) + 1;
-		// x_pos, y_pos is the center of the node
-		float x_pos = x_start + ((float)split_index * x_width);
-		float y_pos = y_start - ((float)bfs_node.level * y_spacing);
+			float split = exp2f((float)(bfs_node.level + 1));
+			float x_width = (max_tree_width / split);
+			// map node indices to odd #'s
+			uint64_t split_index = (bfs_node.level_index * 2) + 1;
+			// x_pos, y_pos is the center of the node
+			float x_pos = x_start + ((float)split_index * x_width);
+			float y_pos = y_start - ((float)bfs_node.level * global_y_spacing);
 
-		// Generate all nodes at the origin and set their
-		// destinations to their proper positions in the tree.
-		// Destinations are based on top left corner (first cube index)
-		// of the GameCube.
-		node->cube = GenCube(0.0f, 0.0f, 0.0f, node->val, 0.0f, 0.0f, 1.0f);
-		// TODO: This would be half node width if I add that as a parameter in engine.cpp
-		//       where the nodes are defined and generated.
-		node->x_dest = x_pos - 0.5f;
-		node->y_dest = y_pos + 0.5f;
-		AVLTree_SetVelocity(node, 1.0f, 1.0f);
+			// Generate all nodes at the origin and set their
+			// destinations to their proper positions in the tree.
+			// Destinations are based on top left corner (first cube index)
+			// of the GameCube.
+			float r = 0.0f; //(float)rand() / (float)RAND_MAX;
+			float g = 0.0f; //(float)rand() / (float)RAND_MAX;
+			float b = 1.0f; //(float)rand() / (float)RAND_MAX;
+			node->cube = GenCube(0.0f, 0.0f, 0.0f, node->val, r, g, b);
+			// TODO: This would be half node width if I add that as a parameter in engine.cpp
+			//       where the nodes are defined and generated.
+			node->x_dest = x_pos - 0.5f;
+			node->y_dest = y_pos + 0.5f;
 
-		// TODO: Maybe I can refactor this so I am only setting the velocity once.
-		// I want the node to reach both the x_dest and y_dest at the same time so
-		// whichever destination is closer, I scale that velocity down proportionally.
-		if(node != avl_tree->root) {
-			float x_over_y = fabs(x_pos / y_pos);
-			float y_over_x = fabs(y_pos / x_pos);
-			if(x_over_y < y_over_x) {
-				AVLTree_SetVelocity(node, x_over_y, 1.0f);
+			// I want the node to reach both the x_dest and y_dest at the same time so
+			// whichever destination is closer, I scale that velocity down proportionally.
+			if(node != avl_tree->root) {
+				float x_scale = fabs(x_pos / y_pos);
+				float y_scale = fabs(y_pos / x_pos);
+				if(x_scale < y_scale) {
+					AVLTree_SetVelocity(node, x_scale, 1.0f);
+				}
+				else {
+					AVLTree_SetVelocity(node, 1.0f, y_scale);
+				}
 			}
 			else {
-				AVLTree_SetVelocity(node, 1.0f, y_over_x);
+				AVLTree_SetVelocity(node, 1.0f, 1.0f);
 			}
-		}
 
-		bfs_node = AVLTree_BFS(avl_tree);
+			bfs_node = AVLTree_BFS(avl_tree);
+		}
 	}
 
 	avl_tree->current_state = AVLTREE_INITIALIZING;
 	avl_tree->previous_state = AVLTREE_PAUSED;
 	avl_tree->camera.x = 0.0f;
-	avl_tree->camera.y = -6.0f;
-	avl_tree->camera.z = -50.0f;
+	avl_tree->camera.y = 5.0f;
+	avl_tree->camera.z = -15.0f;
 
 	// Initialize opengl stuff
 	avl_tree->shader = LoadShaderProgram("..\\zshaders\\game_cube.vert", "..\\zshaders\\game_cube.frag");
