@@ -124,6 +124,7 @@ typedef struct {
 
 INTERNAL void           GenDigit(const float x, const float y, const float z, const int val, GameCube* cube);
 INTERNAL GameCube       GenCube(const float x, const float y, const float z, const int val, float r, float g, float b);
+         void           GameCube_SetColor(GameCube* cube, float r, float g, float b);
 INTERNAL GameBackground GenBackgroundBuffer();
 #define ENGINE_H
 #endif

@@ -147,6 +147,17 @@ INTERNAL GameBackground GenBackgroundBuffer() {
 	return gb;
 }
 
+void GameCube_SetColor(GameCube* cube, float r, float g, float b) {
+	assert(cube);
+
+	int num_cube_vertices = STRUCT_MEMBER_SIZE(GameCube, cube_vertices) / sizeof(Vertex);
+	for(int j = 0; j < num_cube_vertices; ++j) {
+		cube->cube_vertices[j].r = r;
+		cube->cube_vertices[j].g = g;
+		cube->cube_vertices[j].b = b;
+	}
+}
+
 INTERNAL void GenDigit(const float x, const float y, const float z, const int val, GameCube* cube) {
 	assert(cube);
 	assert(0 <= val);
