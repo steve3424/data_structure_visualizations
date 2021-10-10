@@ -122,9 +122,8 @@ Solution:
 	  (I.e. assume it will be repeated).
 	- Only process a message that indicates the 
 	  key state changed (is_down != was_down)
-	- In this case set the GameInput.GameButton.is_down 
-	  property to whatever the message says and
-	  reset the GameInput.GameButton.repeat_count to 0.
+	- Whether it changes from down to up OR up to down,
+	  it should reset repeat_count.
 	- Implement repeat delay:
 		- Look at every button that either has is_down true or 
 		  has a positive repeat_count.
@@ -298,8 +297,11 @@ INTERNAL void Win32ProcessPendingMessages(GameInput* new_input) {
 	// REPEAT DELAY
 	// TODO: exempt certain keys (ctrl, alt) from repeat delay
 	int repeat_sensitivity = 20;
-	for(int i = 0; i < new_input->num_buttons; ++i) {
-		if(new_input->buttons[i].is_down || new_input->buttons[i].repeat_count > 0) {
+	int num_buttons = sizeof(GameInput) / sizeof(GameButtonState);
+	for(int i = 0; i < num_buttons; ++i) {
+		// If key is in dead zone .is_down will be switched off, but we need to still track it
+		// for when it gets out so we check for either .is_down or positive repeat count.
+		if((new_input->buttons[i].is_down) || (new_input->buttons[i].repeat_count > 0)) {
 			new_input->buttons[i].repeat_count += 1;
 			bool should_delay = (1 < new_input->buttons[i].repeat_count && new_input->buttons[i].repeat_count < repeat_sensitivity);
 			if(should_delay) {

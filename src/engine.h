@@ -37,8 +37,10 @@ typedef struct {
 } GameButtonState;
 
 // buttons are for DVORAK layout right now
+// NOTE: Num buttons is calculated as sizeof(GameInput) /
+//       sizeof(GameButtonState) so be careful changing
+//       this struct.
 typedef struct GameInput {
-	int num_buttons = 22;
 	union {
 		GameButtonState buttons[22];
 		struct {
