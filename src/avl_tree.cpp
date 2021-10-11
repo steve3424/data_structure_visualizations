@@ -1,5 +1,5 @@
-static int         global_avl_tree_init_size = 16;
-static float       global_avl_tree_units_per_second = 7.0f; // units is a unit cube 1.0f
+static int         global_avl_tree_init_size = 7;
+static float       global_avl_tree_units_per_second = 5.0f; // units is a unit cube 1.0f
 static float const global_avl_tree_frames_per_second = 60.0f;
 static int         global_avl_tree_timer_reset = 240 / (int)global_avl_tree_units_per_second;
 static float const global_node_width = 1.0f; // this is fixed based on the model sent to the GPU
@@ -16,10 +16,14 @@ static float const global_y_insert_node_start = 1.3f; // where insert node begin
 typedef enum {
 	AVLTREE_INITIALIZING,
 	AVLTREE_STATIC,
-	AVLTREE_COMPARING,
-	AVLTREE_VAL_MOVING,
-	AVLTREE_DELETE_INSERT_VAL,
-	AVLTREE_INSERT_VAL,
+	AVLTREE_INSERT_NODE_COMPARE,
+	AVLTREE_INSERT_NODE_MOVING_TO_NEXT_COMPARE,
+	AVLTREE_INSERT_NODE_DELETE,
+	AVLTREE_INSERT_NODE_ADD,
+	AVLTREE_UPDATE_HEIGHTS,
+	AVLTREE_ROTATING,
+	AVLTREE_LEFT_RIGHT_ROTATE,
+	AVLTREE_RIGHT_LEFT_ROTATE,
 	AVLTREE_PAUSED
 } AVLTreeState;
 
@@ -54,10 +58,16 @@ typedef struct {
 	// state machine stuff
 	AVLTreeState current_state;
 	AVLTreeState previous_state;
-	// TODO: Maybe I can connect it as root 
-	//       temporarily or something
-	AVLNode* inserting_node;
+	AVLNode* detached_node;
+	AVLNode* inserted_node;
 	AVLNode* compare_node;
+
+	// These are used for left_right rotations and
+	// right_left rotations. It makes the state 
+	// machine code a bit simpler than it otherwise
+	// would be.
+	bool left_rotate;
+	bool right_rotate;
 } AVLTree;
 
 
@@ -354,19 +364,23 @@ static inline bool AVLTree_AnimationFinished(AVLNode* node) {
 	return (node->x_vel == 0.0f) && (node->y_vel == 0.0f);
 }
 
-inline void AVLTree_SetVelocity(AVLNode* node, float const x_scale, float const y_scale) {
+// Automatically syncs x_vel and y_vel so they land at the same time.
+inline void AVLTree_SetVelocity(AVLNode* node) {
 	float x_dist = node->x_dest - node->cube.cube_vertices[0].x;
 	float y_dist = node->y_dest - node->cube.cube_vertices[0].y;
 
-	float x_units_per_frame = (global_avl_tree_units_per_second * x_scale) / global_avl_tree_frames_per_second;
-	float y_units_per_frame = (global_avl_tree_units_per_second * y_scale) / global_avl_tree_frames_per_second;
-	float x_frames_to_reach_dest = fabs(x_dist / x_units_per_frame);
-	float y_frames_to_reach_dest = fabs(y_dist / y_units_per_frame);
-	int x_frames_rounded_up = (int)(x_frames_to_reach_dest + 1.0f);
-	int y_frames_rounded_up = (int)(y_frames_to_reach_dest + 1.0f);
-
-	node->x_vel = x_scale == 0.0f ? 0.0f : x_dist / (float)x_frames_rounded_up;
-	node->y_vel = y_scale == 0.0f ? 0.0f : y_dist / (float)y_frames_rounded_up;
+	float units_per_frame = global_avl_tree_units_per_second / global_avl_tree_frames_per_second;
+	float x_frames_to_reach_dest = fabs(x_dist / units_per_frame);
+	float y_frames_to_reach_dest = fabs(y_dist / units_per_frame);
+	int frames_to_reach_dest;
+	if(x_frames_to_reach_dest < y_frames_to_reach_dest) {
+		frames_to_reach_dest = (int)(y_frames_to_reach_dest + 1);
+	}
+	else {
+		frames_to_reach_dest = (int)(x_frames_to_reach_dest + 1);
+	}
+	node->x_vel = x_dist / (float)frames_to_reach_dest;
+	node->y_vel = y_dist / (float)frames_to_reach_dest;
 }
 
 INTERNAL void AVLTree_DrawBackground(GameBackground gb, float window_width, float window_height) {
@@ -454,12 +468,21 @@ static void AVLTree_UpdateGeometry(AVLTree* avl_tree) {
 				node->cube.line_vertices[1].b = 153.0f / 255.0f;
 			}
 		}
+		else {
+			// clear parent for root node
+			node->cube.line_vertices[0].x = 0.0f;
+			node->cube.line_vertices[0].y = 0.0f;
+			node->cube.line_vertices[0].z = 0.0f;
+			node->cube.line_vertices[1].x = 0.0f;
+			node->cube.line_vertices[1].y = 0.0f;
+			node->cube.line_vertices[1].z = 0.0f;
+		}
 
 		bfs_node = AVLTree_BFS(avl_tree);
 	}
 	
-	if(avl_tree->inserting_node) {
-		AVLNode* node = avl_tree->inserting_node;
+	if(avl_tree->detached_node) {
+		AVLNode* node = avl_tree->detached_node;
 		GameCube* cube = &node->cube;
 
 		int cube_vertices = sizeof(cube->cube_vertices) / sizeof(Vertex);
@@ -472,6 +495,35 @@ static void AVLTree_UpdateGeometry(AVLTree* avl_tree) {
 			cube->digit_vertices[j].x += node->x_vel;
 			cube->digit_vertices[j].y += node->y_vel;
 		}
+	}
+}
+
+static void AVLTree_SetEntireTreeDest(AVLTree* avl_tree) {
+	assert(avl_tree);
+
+	const int   bottom_level_width = 1 << avl_tree->root->height;
+	const float max_tree_width = bottom_level_width * (global_node_width + global_node_margin) - global_node_margin; // subtract one node_margin for the far right node
+	const float x_start = (max_tree_width / 2.0f) * -1.0f;
+	const float y_start = 0.0f;
+
+	AVLTreeBFSNode bfs_node = AVLTree_BFS(avl_tree);
+	while(bfs_node.node) {
+		AVLNode* node = bfs_node.node;
+
+		float split = exp2f((float)(bfs_node.level + 1));
+		float x_width = (max_tree_width / split);
+		// map node indices to odd #'s
+		uint64_t split_index = (bfs_node.level_index * 2) + 1;
+		// x_pos, y_pos is the center of the node
+		float x_pos = x_start + ((float)split_index * x_width);
+		float y_pos = y_start - ((float)bfs_node.level * global_y_spacing);
+
+		// destination is based on top left front corner of cube
+		node->x_dest = x_pos - 0.5f;
+		node->y_dest = y_pos + 0.5f;
+		AVLTree_SetVelocity(node);
+
+		bfs_node = AVLTree_BFS(avl_tree);
 	}
 }
 
@@ -497,7 +549,7 @@ void AVLTree_Draw(AVLTree* avl_tree, float window_width, float window_height) {
 	GLCall(glUseProgram(avl_tree->shader));
 
 	// NOTE: One for inserting node possibly
-	unsigned int buffer_size = MAX_DIGITS * sizeof(GameCube);
+	unsigned int buffer_size = (MAX_DIGITS + 1) * sizeof(GameCube);
 	GLCall(glBufferData(GL_ARRAY_BUFFER, buffer_size, NULL, GL_DYNAMIC_DRAW));
 	unsigned int buffer_write_index = 0;
  	AVLTreeBFSNode bfs_node = AVLTree_BFS(avl_tree);
@@ -511,9 +563,9 @@ void AVLTree_Draw(AVLTree* avl_tree, float window_width, float window_height) {
  	   	bfs_node = AVLTree_BFS(avl_tree);
  	}
 
-	if(avl_tree->inserting_node) {
+	if(avl_tree->detached_node) {
 		GLCall(glBufferSubData(GL_ARRAY_BUFFER, buffer_write_index, 
-					           sizeof(GameCube), &avl_tree->inserting_node->cube));
+					           sizeof(GameCube), &avl_tree->detached_node->cube));
 	}
 
 	int model_location = glGetUniformLocation(avl_tree->shader, "model");
@@ -535,7 +587,7 @@ void AVLTree_Draw(AVLTree* avl_tree, float window_width, float window_height) {
 
 	unsigned int vertices_per_cube = sizeof(GameCube) / sizeof(Vertex);
 	// NOTE: One for inserting node possibly
-	unsigned int num_cubes = avl_tree->inserting_node ?
+	unsigned int num_cubes = avl_tree->detached_node ?
 		                     avl_tree->size + 1       :
 							 avl_tree->size;
 	GLCall(glDrawArrays(GL_LINES, 0, num_cubes * VERTICES_PER_CUBE));
@@ -581,8 +633,7 @@ void AVLTree_Update(AVLTree* avl_tree, GameInput* input) {
 		case AVLTREE_STATIC: 
 		{
 			if(input->a.is_down) {
-				// TODO: I could take care of root case with regular insertion code
-				int val = 33; //rand() % MAX_DIGITS;
+				int val = rand() % MAX_DIGITS;
 				AVLNode* node = (AVLNode*)calloc(1, sizeof(AVLNode));
 				node->val = val;
 				if(!avl_tree->root) {
@@ -591,18 +642,17 @@ void AVLTree_Update(AVLTree* avl_tree, GameInput* input) {
 					avl_tree->size = 1;
 				}
 				else {
-					node->cube = GenCube(0.0f, global_y_insert_node_start, 0.0f, val, 1.0f, 1.0f, 153.0f / 255.0f);
-					avl_tree->inserting_node = node;
+					node->cube = GenCube(0.0f, global_y_insert_node_start, 0.0f, val, 1.0f, 140.0f / 255.0f, 0.0f);
+					avl_tree->detached_node = node;
 					avl_tree->compare_node = avl_tree->root;
-					GameCube_SetColor(&avl_tree->compare_node->cube, 1.0f, 1.0f, 153.0f / 255.0f);
-					avl_tree->current_state = AVLTREE_COMPARING;
+					avl_tree->current_state = AVLTREE_INSERT_NODE_COMPARE;
 				}
 			}
 		} break;
 
-		case AVLTREE_COMPARING: 
+		case AVLTREE_INSERT_NODE_COMPARE:
 		{
-			if(avl_tree->inserting_node->val == 
+			if(avl_tree->detached_node->val == 
 			   avl_tree->compare_node->val) 
 			{
 				AVLTreeBFSNode bfs_node = AVLTree_BFS(avl_tree);
@@ -610,11 +660,11 @@ void AVLTree_Update(AVLTree* avl_tree, GameInput* input) {
 					GameCube_SetColor(&bfs_node.node->cube, 1.0f, 0.0f, 0.0f);
 					bfs_node = AVLTree_BFS(avl_tree);
 				}
-				GameCube_SetColor(&avl_tree->inserting_node->cube, 1.0f, 0.0f, 0.0f);
-				avl_tree->current_state = AVLTREE_DELETE_INSERT_VAL;
+				GameCube_SetColor(&avl_tree->detached_node->cube, 1.0f, 0.0f, 0.0f);
+				avl_tree->current_state = AVLTREE_INSERT_NODE_DELETE;
 			}
 			else {
-				GameCube_SetColor(&avl_tree->compare_node->cube, 1.0f, 1.0f, 153.0f / 255.0f);
+				GameCube_SetColor(&avl_tree->compare_node->cube, 1.0f, 140.0f / 255.0f, 0.0f);
 
 				static int timer = global_avl_tree_timer_reset;
 				if(timer == 0) {
@@ -622,59 +672,45 @@ void AVLTree_Update(AVLTree* avl_tree, GameInput* input) {
 
 					GameCube_SetColor(&avl_tree->compare_node->cube, 0.0f, 0.0f, 1.0f);
 
-					avl_tree->inserting_node->y_dest = avl_tree->inserting_node->cube.cube_vertices[0].y - global_y_spacing;
+					avl_tree->detached_node->y_dest = avl_tree->detached_node->cube.cube_vertices[0].y - global_y_spacing;
 					float x_spacing = AVLTree_GetNodeSplitWidth(avl_tree->compare_node, avl_tree->root->height);
-					// Scale velocity in shorter direction so it reaches
-					// both x_dest and y_dest at the same time. Check to
-					// see which one is shorter then set the other scale
-					// back to 1.
-					float x_scale = fabs(x_spacing / global_y_spacing);
-					float y_scale = fabs(global_y_spacing / x_spacing);
-					if(x_scale < y_scale) {
-						y_scale = 1.0f;
-					}
-					else {
-						x_scale = 1.0f;
-					}
 
-					if(avl_tree->inserting_node->val < 
+					if(avl_tree->detached_node->val < 
 					   avl_tree->compare_node->val) 
 					{
-						// TODO: Base cases will have inexact velocity since we are changing y_dest
-						//       after we calculate scale values.
 						// BASE CASE: insert into tree
 						if(avl_tree->compare_node->left == NULL) {
-							avl_tree->inserting_node->y_dest -= global_y_insert_node_start;
-							avl_tree->inserting_node->x_dest = avl_tree->inserting_node->cube.cube_vertices[0].x - x_spacing;
-							AVLTree_SetVelocity(avl_tree->inserting_node, x_scale, y_scale);
-							avl_tree->current_state = AVLTREE_INSERT_VAL;
+							avl_tree->detached_node->y_dest -= global_y_insert_node_start;
+							avl_tree->detached_node->x_dest = avl_tree->detached_node->cube.cube_vertices[0].x - x_spacing;
+							AVLTree_SetVelocity(avl_tree->detached_node);
+							avl_tree->current_state = AVLTREE_INSERT_NODE_ADD;
 						}
 						else {
-							avl_tree->inserting_node->x_dest = avl_tree->inserting_node->cube.cube_vertices[0].x - x_spacing;
-							AVLTree_SetVelocity(avl_tree->inserting_node, x_scale, y_scale);
+							avl_tree->detached_node->x_dest = avl_tree->detached_node->cube.cube_vertices[0].x - x_spacing;
+							AVLTree_SetVelocity(avl_tree->detached_node);
 
 							avl_tree->compare_node = avl_tree->compare_node->left;
 
-							avl_tree->current_state = AVLTREE_VAL_MOVING;
+							avl_tree->current_state = AVLTREE_INSERT_NODE_MOVING_TO_NEXT_COMPARE;
 						}
 					}
-					else if(avl_tree->inserting_node->val > 
+					else if(avl_tree->detached_node->val > 
 					        avl_tree->compare_node->val) 
 					{
 						// BASE CASE: insert into tree
 						if(avl_tree->compare_node->right == NULL) {
-							avl_tree->inserting_node->y_dest -= global_y_insert_node_start;
-							avl_tree->inserting_node->x_dest = avl_tree->inserting_node->cube.cube_vertices[0].x + x_spacing;
-							AVLTree_SetVelocity(avl_tree->inserting_node, x_scale, y_scale);
-							avl_tree->current_state = AVLTREE_INSERT_VAL;
+							avl_tree->detached_node->y_dest -= global_y_insert_node_start;
+							avl_tree->detached_node->x_dest = avl_tree->detached_node->cube.cube_vertices[0].x + x_spacing;
+							AVLTree_SetVelocity(avl_tree->detached_node);
+							avl_tree->current_state = AVLTREE_INSERT_NODE_ADD;
 						}
 						else {
-							avl_tree->inserting_node->x_dest = avl_tree->inserting_node->cube.cube_vertices[0].x + x_spacing;
-							AVLTree_SetVelocity(avl_tree->inserting_node, x_scale, y_scale);
+							avl_tree->detached_node->x_dest = avl_tree->detached_node->cube.cube_vertices[0].x + x_spacing;
+							AVLTree_SetVelocity(avl_tree->detached_node);
 
 							avl_tree->compare_node = avl_tree->compare_node->right;
 
-							avl_tree->current_state = AVLTREE_VAL_MOVING;
+							avl_tree->current_state = AVLTREE_INSERT_NODE_MOVING_TO_NEXT_COMPARE;
 						}
 					}
 				}
@@ -684,21 +720,21 @@ void AVLTree_Update(AVLTree* avl_tree, GameInput* input) {
 			}
 		} break;
 
-		case AVLTREE_VAL_MOVING: 
+		case AVLTREE_INSERT_NODE_MOVING_TO_NEXT_COMPARE: 
 		{
-			if(AVLTree_AnimationFinished(avl_tree->inserting_node)) {
-				avl_tree->current_state = AVLTREE_COMPARING;
+			if(AVLTree_AnimationFinished(avl_tree->detached_node)) {
+				avl_tree->current_state = AVLTREE_INSERT_NODE_COMPARE;
 			}
 		} break;
 
-		case AVLTREE_DELETE_INSERT_VAL: 
+		case AVLTREE_INSERT_NODE_DELETE: 
 		{
 			static int timer = global_avl_tree_timer_reset;
 			if(timer == 0) {
 				timer = global_avl_tree_timer_reset;
 
-				free(avl_tree->inserting_node);
-				avl_tree->inserting_node = NULL;
+				free(avl_tree->detached_node);
+				avl_tree->detached_node = NULL;
 				avl_tree->compare_node = NULL;
 				AVLTreeBFSNode bfs_node = AVLTree_BFS(avl_tree);
 				while(bfs_node.node) {
@@ -712,28 +748,102 @@ void AVLTree_Update(AVLTree* avl_tree, GameInput* input) {
 			}
 		} break;
 
-		case AVLTREE_INSERT_VAL:
+		case AVLTREE_INSERT_NODE_ADD:
 		{
-			if(AVLTree_AnimationFinished(avl_tree->inserting_node)) {
-				GameCube_SetColor(&avl_tree->inserting_node->cube, 0.0f, 0.0f, 1.0f);
+			if(AVLTree_AnimationFinished(avl_tree->detached_node)) {
+				GameCube_SetColor(&avl_tree->detached_node->cube, 0.0f, 0.0f, 1.0f);
+
+				avl_tree->detached_node->parent = avl_tree->compare_node;
 
 				// Check to see if it is left or right because
 				// I don't track where it came from.
-				if(avl_tree->inserting_node->val < 
+				if(avl_tree->detached_node->val < 
 				   avl_tree->compare_node->val) 
 				{
-					avl_tree->compare_node->left = avl_tree->inserting_node;
-					avl_tree->inserting_node->parent = avl_tree->compare_node;
+					avl_tree->compare_node->left = avl_tree->detached_node;
 				}
 				else {
-					avl_tree->compare_node->right = avl_tree->inserting_node;
-					avl_tree->inserting_node->parent = avl_tree->compare_node;
+					avl_tree->compare_node->right = avl_tree->detached_node;
 				}
 
 				avl_tree->size++;
-				avl_tree->inserting_node = NULL;
-				avl_tree->compare_node = NULL;
+				avl_tree->inserted_node = avl_tree->detached_node;
+				avl_tree->detached_node = NULL;
+
+				avl_tree->current_state = AVLTREE_UPDATE_HEIGHTS;
+			}
+		} break;
+
+		case AVLTREE_UPDATE_HEIGHTS:
+		{
+			if(avl_tree->compare_node) {
+				AVLTree_UpdateHeight(avl_tree->compare_node);
+				int balance = AVLTree_GetBalance(avl_tree->compare_node);
+
+				if(((balance > 1) && 
+				   (avl_tree->inserted_node->val < avl_tree->compare_node->left->val)) ||
+					avl_tree->right_rotate) 
+				{
+					avl_tree->right_rotate = false;
+					avl_tree->compare_node = AVLTree_RightRotate(avl_tree->compare_node);
+				}
+				else if(((balance < -1) && 
+						(avl_tree->inserted_node->val > avl_tree->compare_node->right->val)) ||
+						avl_tree->left_rotate)
+				{
+					avl_tree->left_rotate = false;
+					avl_tree->compare_node = AVLTree_LeftRotate(avl_tree->compare_node);
+				}
+				else if((balance > 1) && 
+					    (avl_tree->inserted_node->val > avl_tree->compare_node->left->val)) 
+				{
+					AVLTree_LeftRotate(avl_tree->compare_node->left);
+					AVLTree_SetEntireTreeDest(avl_tree);
+					avl_tree->right_rotate = true;
+					avl_tree->current_state = AVLTREE_ROTATING;
+					break;
+				}
+				else if((balance < -1) && 
+					    (avl_tree->inserted_node->val < avl_tree->compare_node->right->val)) 
+				{
+					AVLTree_RightRotate(avl_tree->compare_node->right);
+					AVLTree_SetEntireTreeDest(avl_tree);
+					avl_tree->left_rotate = true;
+					avl_tree->current_state = AVLTREE_ROTATING;
+					break;
+				}
+
+				if(avl_tree->compare_node->parent == NULL) {
+					avl_tree->root = avl_tree->compare_node;
+				}
+
+				AVLTree_SetEntireTreeDest(avl_tree);
+				avl_tree->compare_node = avl_tree->compare_node->parent;
+				avl_tree->current_state = AVLTREE_ROTATING;
+			}
+			else {
 				avl_tree->current_state = AVLTREE_STATIC;
+			}
+		} break;
+
+		case AVLTREE_ROTATING:
+		{
+			int num_nodes_finished = 0;
+
+			AVLTreeBFSNode bfs_node = AVLTree_BFS(avl_tree);
+			while(bfs_node.node) {                          
+				AVLNode* node = bfs_node.node;                 
+				GameCube* cube = &node->cube;
+
+				if(AVLTree_AnimationFinished(node)) {
+					num_nodes_finished++;
+				}
+			
+				bfs_node = AVLTree_BFS(avl_tree);          
+			}                                               
+
+			if(num_nodes_finished == avl_tree->size) {
+				avl_tree->current_state = AVLTREE_UPDATE_HEIGHTS;
 			}
 		} break;
 	}
@@ -751,7 +861,8 @@ AVLTree* AVLTree_Init() {
 	// Initialize entire tree since the tree will rotate
 	// and positions will change.
 	for(int i = 0; i < global_avl_tree_init_size; ++i) {
-		AVLTree_Insert(avl_tree, i);
+		int val = rand() % MAX_DIGITS;
+		AVLTree_Insert(avl_tree, val);
 	}
 
 	if(avl_tree->root) {
@@ -787,21 +898,7 @@ AVLTree* AVLTree_Init() {
 			node->x_dest = x_pos - 0.5f;
 			node->y_dest = y_pos + 0.5f;
 
-			// I want the node to reach both the x_dest and y_dest at the same time so
-			// whichever destination is closer, I scale that velocity down proportionally.
-			if(node != avl_tree->root) {
-				float x_scale = fabs(x_pos / y_pos);
-				float y_scale = fabs(y_pos / x_pos);
-				if(x_scale < y_scale) {
-					AVLTree_SetVelocity(node, x_scale, 1.0f);
-				}
-				else {
-					AVLTree_SetVelocity(node, 1.0f, y_scale);
-				}
-			}
-			else {
-				AVLTree_SetVelocity(node, 1.0f, 1.0f);
-			}
+			AVLTree_SetVelocity(node);
 
 			bfs_node = AVLTree_BFS(avl_tree);
 		}
