@@ -52,3 +52,9 @@ VIDEO: https://youtu.be/3Zxa4F3npBc
 - '0-9' adjust speed setting
 - 'p' pause/unpause animation
 - 's' start animation OR return to original state if animation finished
+
+##### AVL Tree
+VIDEO: https://youtu.be/sgi1q6iuAa4
+
+- 'p' pause/unpause animation
+- 'a' insert random node into tree
