@@ -2,12 +2,6 @@
 - Add functions to get specified vertex of cube (top left, bottom right)
 - Stutters when loading background image, maybe fix that
 - Not sure if the buffer orphaning strategy is good or even implemented correctly. Maybe try something else.
-- Maybe I can just stick everything into an array so I don't have to keep doing BFS and
-  just update the array with one BFS when something gets deleted
-- Candidates to put into engine.cpp:
-	- SetVelocity
-	- UpdateGeometry
-	- UpdateVelocitySetting
-- use abs()
 - I should probably pass dt and use that for velocities. I've had problems with the threshold float compare.
 - Maybe initialize AVLTree by inserting really quickly and running the full animations
+- How to add other animations like color fading, line growth
