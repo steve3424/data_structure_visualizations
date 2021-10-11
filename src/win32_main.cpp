@@ -469,7 +469,6 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, 
 				uint64_t last_cycle_counter = __rdtsc();
 
 				// ***** MAIN LOOP *****
-				//int frame_count = 0;
 				global_running = true;
 				while (global_running) {
 
