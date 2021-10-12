@@ -54,7 +54,7 @@ VIDEO: https://youtu.be/3Zxa4F3npBc
 - 's' start animation OR return to original state if animation finished
 
 ##### AVL Tree
-VIDEO: https://youtu.be/sgi1q6iuAa4
+VIDEO: https://youtu.be/On3_j7sJzI4
 
 - 'p' pause/unpause animation
 - 'a' insert random node into tree
