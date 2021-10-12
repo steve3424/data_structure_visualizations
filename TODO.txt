@@ -13,7 +13,6 @@
 - avl_tree.cpp
 	-- Make rotations happen piece meal to see each step
 	-- Animate lines
-	-- Init tree by running insert at fast speed
 	-- Implement DELETE
 	
 - insertion_sort.cpp

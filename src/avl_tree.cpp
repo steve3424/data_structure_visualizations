@@ -1,7 +1,8 @@
-static int         global_avl_tree_init_size = 7;
+static int         global_avl_tree_init_size = 16;
 static float       global_avl_tree_units_per_second = 5.0f; // units is a unit cube 1.0f
 static float const global_avl_tree_frames_per_second = 60.0f;
-static int         global_avl_tree_timer_reset = 240 / (int)global_avl_tree_units_per_second;
+static int   const global_timer_constant = 240;
+static int         global_avl_tree_timer_reset = global_timer_constant / (int)global_avl_tree_units_per_second;
 static float const global_node_width = 1.0f; // this is fixed based on the model sent to the GPU
 static float const global_node_margin = 0.75f; // space between the nodes at the bottom level
 static float const global_y_spacing = 3.0f; // space between successive levels of the tree
@@ -47,6 +48,7 @@ typedef struct {
 	// data
 	int size;
 	AVLNode* root;
+	bool initializing;
 
 	// opengl
 	GameCamera camera;
@@ -600,6 +602,14 @@ void AVLTree_Update(AVLTree* avl_tree, GameInput* input) {
 	assert(avl_tree);
 	assert(input);
 
+	if(avl_tree->size == global_avl_tree_init_size ||
+	   avl_tree->size == MAX_DIGITS)
+	{
+		avl_tree->initializing = false;
+		global_avl_tree_units_per_second = 7.0f;
+		global_avl_tree_timer_reset = global_timer_constant / (int)global_avl_tree_units_per_second;
+	}
+
 	if(input->p.is_down) {
 		if(avl_tree->current_state != AVLTREE_STATIC) {
 			AVLTreeState temp = avl_tree->current_state;
@@ -632,7 +642,7 @@ void AVLTree_Update(AVLTree* avl_tree, GameInput* input) {
 
 		case AVLTREE_STATIC: 
 		{
-			if(input->a.is_down) {
+			if(input->a.is_down || avl_tree->initializing) {
 				int val = rand() % MAX_DIGITS;
 				AVLNode* node = (AVLNode*)calloc(1, sizeof(AVLNode));
 				node->val = val;
@@ -858,53 +868,57 @@ AVLTree* AVLTree_Init() {
 		return NULL;
 	}
 
-	// Initialize entire tree since the tree will rotate
-	// and positions will change.
-	for(int i = 0; i < global_avl_tree_init_size; ++i) {
-		int val = rand() % MAX_DIGITS;
-		AVLTree_Insert(avl_tree, val);
-	}
+	avl_tree->initializing = true;
+	global_avl_tree_units_per_second = 50.0f;
+	global_avl_tree_timer_reset = global_timer_constant / (int)global_avl_tree_units_per_second;
 
-	if(avl_tree->root) {
-		// Set up spacing, width, ..., for 3d node positions
-		const int   bottom_level_width = 1 << avl_tree->root->height;
-		const float max_tree_width = bottom_level_width * (global_node_width + global_node_margin) - global_node_margin; // subtract one node_margin for the far right node
-		const float x_start = (max_tree_width / 2.0f) * -1.0f;
-		const float y_start = 0.0f;
+	//// Initialize entire tree since the tree will rotate
+	//// and positions will change.
+	//for(int i = 0; i < global_avl_tree_init_size; ++i) {
+	//	int val = rand() % MAX_DIGITS;
+	//	AVLTree_Insert(avl_tree, val);
+	//}
 
-		// Generate node geometry
-		AVLTreeBFSNode bfs_node = AVLTree_BFS(avl_tree);
-		while(bfs_node.node) {
-			AVLNode* node = bfs_node.node;
+	//if(avl_tree->root) {
+	//	// Set up spacing, width, ..., for 3d node positions
+	//	const int   bottom_level_width = 1 << avl_tree->root->height;
+	//	const float max_tree_width = bottom_level_width * (global_node_width + global_node_margin) - global_node_margin; // subtract one node_margin for the far right node
+	//	const float x_start = (max_tree_width / 2.0f) * -1.0f;
+	//	const float y_start = 0.0f;
 
-			float split = exp2f((float)(bfs_node.level + 1));
-			float x_width = (max_tree_width / split);
-			// map node indices to odd #'s
-			uint64_t split_index = (bfs_node.level_index * 2) + 1;
-			// x_pos, y_pos is the center of the node
-			float x_pos = x_start + ((float)split_index * x_width);
-			float y_pos = y_start - ((float)bfs_node.level * global_y_spacing);
+	//	// Generate node geometry
+	//	AVLTreeBFSNode bfs_node = AVLTree_BFS(avl_tree);
+	//	while(bfs_node.node) {
+	//		AVLNode* node = bfs_node.node;
 
-			// Generate all nodes at the origin and set their
-			// destinations to their proper positions in the tree.
-			// Destinations are based on top left corner (first cube index)
-			// of the GameCube.
-			float r = 0.0f; //(float)rand() / (float)RAND_MAX;
-			float g = 0.0f; //(float)rand() / (float)RAND_MAX;
-			float b = 1.0f; //(float)rand() / (float)RAND_MAX;
-			node->cube = GenCube(0.0f, 0.0f, 0.0f, node->val, r, g, b);
-			// TODO: This would be half node width if I add that as a parameter in engine.cpp
-			//       where the nodes are defined and generated.
-			node->x_dest = x_pos - 0.5f;
-			node->y_dest = y_pos + 0.5f;
+	//		float split = exp2f((float)(bfs_node.level + 1));
+	//		float x_width = (max_tree_width / split);
+	//		// map node indices to odd #'s
+	//		uint64_t split_index = (bfs_node.level_index * 2) + 1;
+	//		// x_pos, y_pos is the center of the node
+	//		float x_pos = x_start + ((float)split_index * x_width);
+	//		float y_pos = y_start - ((float)bfs_node.level * global_y_spacing);
 
-			AVLTree_SetVelocity(node);
+	//		// Generate all nodes at the origin and set their
+	//		// destinations to their proper positions in the tree.
+	//		// Destinations are based on top left corner (first cube index)
+	//		// of the GameCube.
+	//		float r = 0.0f; //(float)rand() / (float)RAND_MAX;
+	//		float g = 0.0f; //(float)rand() / (float)RAND_MAX;
+	//		float b = 1.0f; //(float)rand() / (float)RAND_MAX;
+	//		node->cube = GenCube(0.0f, 0.0f, 0.0f, node->val, r, g, b);
+	//		// TODO: This would be half node width if I add that as a parameter in engine.cpp
+	//		//       where the nodes are defined and generated.
+	//		node->x_dest = x_pos - 0.5f;
+	//		node->y_dest = y_pos + 0.5f;
 
-			bfs_node = AVLTree_BFS(avl_tree);
-		}
-	}
+	//		AVLTree_SetVelocity(node);
 
-	avl_tree->current_state = AVLTREE_INITIALIZING;
+	//		bfs_node = AVLTree_BFS(avl_tree);
+	//	}
+	//}
+
+	avl_tree->current_state = AVLTREE_STATIC;
 	avl_tree->previous_state = AVLTREE_PAUSED;
 	avl_tree->camera.x = 0.0f;
 	avl_tree->camera.y = 5.0f;
