@@ -1,6 +1,10 @@
 # Data Structure and Algorithm visualizations
 Some visualizations of data structures and algorithms.
 
+Insertion sort video: https://youtu.be/3Zxa4F3npBc 
+
+AVL Tree video: https://youtu.be/On3_j7sJzI4
+
 ## Repo Structure
 - /shell.bat - sets up the visual studio compiler for use. I am not sure if the path is valid on every Windows 10 machine.
 - /include   - Some 3rd party headers.
